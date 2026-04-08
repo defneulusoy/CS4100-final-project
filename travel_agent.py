@@ -19,6 +19,31 @@ import urllib.request
 import urllib.parse
 import json
 
+
+def _load_env() -> None:
+    """
+    Load KEY=VALUE pairs from a .env file sitting next to this script.
+    Uses __file__ so it works regardless of which directory you run from.
+    Does NOT override variables already set in the shell environment.
+    """
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key   = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except FileNotFoundError:
+        pass  # .env is optional — keys can still be set in the shell
+
+
+_load_env()
+
 # Flight data module (same directory)
 from flights_api import (
     Airport, Flight,
@@ -30,6 +55,92 @@ from flights_api import (
 # Data classes  (Flight and Airport are imported from flights_api)
 # ---------------------------------------------------------------------------
 
+# Estimated entry cost in USD per price_level (0=free … 4=very expensive).
+# Used as fallback when the attraction isn't in KNOWN_COSTS below.
+PRICE_LEVEL_COST: dict[int, float] = {
+    0: 0.0,    # free  (parks, churches, public squares)
+    1: 15.0,   # cheap (small museums, minor attractions)
+    2: 30.0,   # moderate (major museums, galleries)
+    3: 60.0,   # expensive (theme parks, tours)
+    4: 120.0,  # very expensive (luxury experiences)
+}
+
+# Hardcoded real-world entry prices (USD) for major attractions whose
+# Google Places price_level is unreliable (often reported as 0/free).
+# Keys are lowercase substrings — if the attraction name contains the key,
+# this cost is used instead of the price_level estimate.
+KNOWN_COSTS: dict[str, float] = {
+    # Paris
+    "louvre":               22.0,
+    "eiffel tower":         29.0,
+    "arc de triomphe":      16.0,
+    "musée d'orsay":        16.0,
+    "versailles":           21.0,
+    "centre pompidou":      15.0,
+    "panthéon":             13.0,
+    "sainte-chapelle":      13.0,
+    "musée picasso":        14.0,
+    # Rome
+    "colosseum":            18.0,
+    "coliseum":             18.0,
+    "vatican museums":      20.0,
+    "sistine chapel":       20.0,  # included with Vatican Museums
+    "castel sant'angelo":   15.0,
+    "borghese gallery":     15.0,
+    "roman forum":          18.0,  # combined ticket with Colosseum
+    "palatine hill":        18.0,
+    # Tokyo
+    "tokyo skytree":        22.0,
+    "tokyo tower":          18.0,
+    "teamlab":              32.0,
+    "shinjuku gyoen":        5.0,
+    "tokyo disneyland":     85.0,
+    "tokyo disney":         85.0,
+    "ghibli museum":        16.0,
+    "edo-tokyo museum":      7.0,
+    "tokyo national museum": 10.0,
+    "imperial palace":       0.0,  # free (east gardens)
+    # London
+    "tower of london":      34.0,
+    "buckingham palace":    32.0,
+    "kew gardens":          22.0,
+    "warner bros":          55.0,
+    # New York
+    "metropolitan museum":  30.0,
+    "museum of modern art":  28.0,
+    "one world":            40.0,
+    "statue of liberty":    24.0,
+    "empire state":         44.0,
+    # Barcelona
+    "sagrada família":      26.0,
+    "park güell":           10.0,
+    "casa batlló":          35.0,
+    "picasso museum":       14.0,
+    # Amsterdam
+    "rijksmuseum":          22.0,
+    "van gogh museum":      22.0,
+    "anne frank":           16.0,
+    # General patterns
+    "aquarium":             30.0,
+    "zoo":                  25.0,
+    "theme park":           75.0,
+    "escape room":          35.0,
+}
+
+
+def estimate_attraction_cost(attr_name: str, price_level: int) -> float:
+    """
+    Return the best available cost estimate for an attraction.
+    Checks KNOWN_COSTS first (by substring match on lowercase name),
+    then falls back to PRICE_LEVEL_COST.
+    """
+    name_lower = attr_name.lower()
+    for keyword, cost in KNOWN_COSTS.items():
+        if keyword in name_lower:
+            return cost
+    return PRICE_LEVEL_COST.get(price_level, 0.0)
+
+
 @dataclass
 class Attraction:
     name: str
@@ -38,6 +149,7 @@ class Attraction:
     price_level: int       # 0 (free) – 4 (very expensive)
     types: list[str] = field(default_factory=list)
     score: float = 0.0     # computed importance score
+    est_cost: float = 0.0  # estimated entry cost in USD
 
 
 @dataclass
@@ -46,6 +158,7 @@ class CityPlan:
     days: int                    # allocated days to spend here
     flight: Optional[Flight]
     attractions: list[Attraction] = field(default_factory=list)
+    attraction_budget_spent: float = 0.0   # total estimated cost of included attractions
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +369,43 @@ def rank_attractions(
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# Budget-aware attraction filter
+# ---------------------------------------------------------------------------
+
+def filter_by_budget(
+    ranked_attractions: list[Attraction],
+    available_budget: float,
+    top_n: int = 10,
+) -> tuple[list[Attraction], float]:
+    """
+    Walk down the pre-ranked attraction list (best-first) and include each
+    attraction if the remaining budget covers its estimated entry cost.
+    Stop when we have top_n attractions or the budget is exhausted.
+
+    Returns:
+        (included_attractions, total_spent)
+
+    This is a greedy knapsack on a pre-sorted list — optimal when items are
+    already ordered by value (importance score) and we just want as many as
+    we can afford.
+    """
+    included = []
+    spent = 0.0
+
+    for attr in ranked_attractions:
+        if len(included) >= top_n:
+            break
+        cost = estimate_attraction_cost(attr.name, attr.price_level)
+        if spent + cost <= available_budget:
+            attr.est_cost = cost
+            included.append(attr)
+            spent += cost
+
+    return included, round(spent, 2)
+
 # ---------------------------------------------------------------------------
 # Day allocation across cities
 # ---------------------------------------------------------------------------
@@ -457,9 +607,11 @@ def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str,
             for rank, attr in enumerate(plan.attractions, 1):
                 stars = "★" * round(attr.rating) + "☆" * (5 - round(attr.rating))
                 price_str = ["Free", "$", "$$", "$$$", "$$$$"][attr.price_level]
+                cost_str  = "Free" if attr.est_cost == 0 else f"~${attr.est_cost:.0f}"
                 print(f"    {rank:>2}. {attr.name}")
                 print(f"        {stars}  {attr.rating:.1f}  |  {attr.review_count:,} reviews"
-                      f"  |  {price_str}  |  score: {attr.score:.2f}")
+                      f"  |  {price_str} ({cost_str})  |  score: {attr.score:.2f}")
+            print(f"\n        💸 Est. attraction spend: ${plan.attraction_budget_spent:.2f}")
         else:
             print("    No attraction data available.")
 
@@ -509,7 +661,6 @@ def main():
     # --- Layer 2: Fetch & rank attractions ---
     print("⏳ Ranking attractions per city (Layer 2 – Hill Climbing on importance)...\n")
     city_raw_attractions: dict[str, list] = {}
-    prev_city = start_city
 
     for city in optimised_order:
         if use_real_attractions:
@@ -529,16 +680,36 @@ def main():
     }
     day_alloc = allocate_days(optimised_order, city_raw_attractions, total_days, flight_hours)
 
+    # Budget remaining after flights, split evenly across cities for attractions
+    flight_cost_estimate = sum(
+        flight_data.get(
+            (optimised_order[i - 1].lower() if i > 0 else start_city.lower(), city.lower()),
+            None
+        ).price
+        if flight_data.get(
+            (optimised_order[i - 1].lower() if i > 0 else start_city.lower(), city.lower())
+        ) else 0.0
+        for i, city in enumerate(optimised_order)
+    )
+    attraction_budget = max(0.0, budget - flight_cost_estimate)
+    per_city_attraction_budget = attraction_budget / max(len(optimised_order), 1)
+
     city_plans: dict[str, CityPlan] = {}
     prev_city = start_city
     for city in optimised_order:
         key = (prev_city.lower(), city.lower())
         flight = flight_data.get(key)
+        filtered, spent = filter_by_budget(
+            city_raw_attractions[city],
+            per_city_attraction_budget,
+            top_n=10,
+        )
         city_plans[city] = CityPlan(
             city=city,
             days=day_alloc[city],
             flight=flight,
-            attractions=city_raw_attractions[city],
+            attractions=filtered,
+            attraction_budget_spent=spent,
         )
         prev_city = city
 
@@ -550,12 +721,19 @@ def main():
     )
     remaining_budget = budget - total_flight_cost
 
-    print(f"  💰 Total flight cost:  ${total_flight_cost:.2f}")
-    print(f"  💰 Remaining budget:   ${remaining_budget:.2f}")
+    total_flight_cost = sum(
+        city_plans[c].flight.price for c in optimised_order if city_plans[c].flight
+    )
+    remaining_budget = budget - total_flight_cost
+    total_attraction_spend = sum(city_plans[c].attraction_budget_spent for c in optimised_order)
+    print(f"  💰 Total flight cost:       ${total_flight_cost:.2f}")
+    print(f"  💰 Est. attraction spend:   ${total_attraction_spend:.2f}")
+    print(f"  💰 Remaining budget:        ${remaining_budget - total_attraction_spend:.2f}")
     print(f"  📅 Day breakdown:")
     for city in optimised_order:
         d = city_plans[city].days
-        print(f"       {city}: {d} day{'s' if d != 1 else ''}")
+        s = city_plans[city].attraction_budget_spent
+        print(f"       {city}: {d} day{'s' if d != 1 else ''}  |  ~${s:.2f} on attractions")
     if not use_real_attractions:
         print("\n  ⚠  Attraction data is mocked. Set GOOGLE_PLACES_API_KEY to use real data.")
     print()
