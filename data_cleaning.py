@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+from html import parser
 import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+
+## ROUTES DATA CLEANING ##
 
 DEFAULT_INPUT = "routes_raw.csv"
 DEFAULT_OUTPUT = "routes_clean.csv"
@@ -106,28 +109,113 @@ def write_json(payload: Dict, output_path: str) -> None:
 		json.dump(payload, file, indent=2, sort_keys=True)
 
 
+## AIRPORT DATA CLEANING ##
+DEFAULT_AIRPORTS_INPUT = "airports_raw.csv"
+DEFAULT_AIRPORTS_OUTPUT = "airports_clean.csv"
+DEFAULT_AIRPORTS_META_OUTPUT = "airports_cleaning_meta.json"
+
+def load_airport_rows(path: str) -> List[Dict[str, str]]:
+	with open(path, "r", encoding="utf-8", newline="") as file:
+		reader = csv.DictReader(file)
+		return list(reader)
+
+
+def clean_airport_rows(rows: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], Dict[str, int]]:
+	cleaned: Dict[str, Dict[str, str]] = {}
+	stats = {
+		"input_rows": len(rows),
+		"clean_rows": 0,
+		"dropped_rows": 0,
+		"dropped_invalid_iata": 0,
+		"dropped_invalid_coordinates": 0,
+		"deduplicated_rows": 0,
+	}
+
+	for row in rows:
+		iata = row.get("iata", "").strip().upper()
+		if not _is_valid_iata(iata):
+			stats["dropped_rows"] += 1
+			stats["dropped_invalid_iata"] += 1
+			continue
+
+		try:
+			latitude = float(row.get("latitude", ""))
+			longitude = float(row.get("longitude", ""))
+		except ValueError:
+			stats["dropped_rows"] += 1
+			stats["dropped_invalid_coordinates"] += 1
+			continue
+
+		if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+			stats["dropped_rows"] += 1
+			stats["dropped_invalid_coordinates"] += 1
+			continue
+
+		if iata in cleaned:
+			stats["deduplicated_rows"] += 1
+			continue
+
+		cleaned[iata] = {
+			"iata": iata,
+			"latitude": f"{latitude:.6f}",
+			"longitude": f"{longitude:.6f}",
+		}
+
+	cleaned_list = sorted(cleaned.values(), key=lambda x: x["iata"])
+	stats["clean_rows"] = len(cleaned_list)
+	return cleaned_list, stats
+
+
+def write_clean_airports_csv(rows: List[Dict[str, str]], output_path: str) -> None:
+	output = Path(output_path)
+	output.parent.mkdir(parents=True, exist_ok=True)
+
+	fieldnames = ["iata", "latitude", "longitude"]
+
+	with output.open("w", encoding="utf-8", newline="") as file:
+		writer = csv.DictWriter(file, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerows(rows)
+  
+  
+  ##
+  
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Clean collected flight route data.")
 	parser.add_argument("--input", default=DEFAULT_INPUT)
 	parser.add_argument("--output", default=DEFAULT_OUTPUT)
 	parser.add_argument("--graph-output", default=DEFAULT_GRAPH_OUTPUT)
 	parser.add_argument("--meta-output", default=DEFAULT_META_OUTPUT)
+	parser.add_argument("--airports-input", default=DEFAULT_AIRPORTS_INPUT)
+	parser.add_argument("--airports-output", default=DEFAULT_AIRPORTS_OUTPUT)
+	parser.add_argument("--airports-meta-output", default=DEFAULT_AIRPORTS_META_OUTPUT)
 	return parser.parse_args()
 
 
 def main() -> None:
 	args = parse_args()
-	rows = load_rows(args.input)
-	cleaned, stats = clean_rows(rows)
-	graph = build_graph(cleaned)
 
-	write_clean_csv(cleaned, args.output)
+	# routes
+	route_rows = load_rows(args.input)
+	cleaned_routes, route_stats = clean_rows(route_rows)
+	graph = build_graph(cleaned_routes)
+
+	write_clean_csv(cleaned_routes, args.output)
 	write_json(graph, args.graph_output)
-	write_json(stats, args.meta_output)
+	write_json(route_stats, args.meta_output)
 
-	print(f"Cleaned {len(cleaned)} routes -> {args.output}")
+	# airports
+	airport_rows = load_airport_rows(args.airports_input)
+	cleaned_airports, airport_stats = clean_airport_rows(airport_rows)
+
+	write_clean_airports_csv(cleaned_airports, args.airports_output)
+	write_json(airport_stats, args.airports_meta_output)
+
+	print(f"Cleaned {len(cleaned_routes)} routes -> {args.output}")
 	print(f"Graph nodes: {len(graph)} -> {args.graph_output}")
-	print(f"Stats -> {args.meta_output}")
+	print(f"Route stats -> {args.meta_output}")
+	print(f"Cleaned {len(cleaned_airports)} airports -> {args.airports_output}")
+	print(f"Airport stats -> {args.airports_meta_output}")
 
 
 if __name__ == "__main__":

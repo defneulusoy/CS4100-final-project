@@ -1,0 +1,8 @@
+{
+  "clean_rows": 6071,
+  "deduplicated_rows": 0,
+  "dropped_invalid_coordinates": 0,
+  "dropped_invalid_iata": 1,
+  "dropped_rows": 1,
+  "input_rows": 6072
+}

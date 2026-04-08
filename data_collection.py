@@ -128,6 +128,21 @@ def write_routes_csv(rows: List[Dict[str, str]], output_path: str) -> None:
 		writer = csv.DictWriter(file, fieldnames=fieldnames)
 		writer.writeheader()
 		writer.writerows(rows)
+  
+def write_airports_csv(rows: List[Dict[str, str]], output_path: str) -> None:
+	fieldnames = [
+		"iata",
+		"latitude",
+		"longitude",
+	]
+
+	output = Path(output_path)
+	output.parent.mkdir(parents=True, exist_ok=True)
+
+	with output.open("w", encoding="utf-8", newline="") as file:
+		writer = csv.DictWriter(file, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerows(rows)
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,6 +157,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
 	args = parse_args()
+	airports = load_airports(args.airports_source)
+	airport_rows = [
+		{
+			"iata": iata,
+			"latitude": f"{lat:.6f}",
+			"longitude": f"{lon:.6f}",
+		}
+		for iata, (lat, lon) in airports.items()
+	]
+	write_airports_csv(airport_rows, "airports_raw.csv")
+	print(f"Collected {len(airport_rows)} airports -> airports_raw.csv")
 	routes = collect_routes(
 		airports_source=args.airports_source,
 		routes_source=args.routes_source,
