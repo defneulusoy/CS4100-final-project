@@ -354,6 +354,98 @@ def build_flight_data(
     return airports, flights
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hotel rate lookup  (Google Hotels via SerpAPI)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_hotel_rate(
+    city: str,
+    check_in: date,
+    check_out: date,
+    api_key: str,
+) -> float:
+    """
+    Fetch the median nightly hotel rate for a city using the Google Hotels API.
+
+    Searches for hotels sorted by lowest price, takes the cheapest 5 results,
+    and returns their median rate — giving a representative mid-range cost
+    rather than an outlier cheapest or most expensive option.
+
+    SerpAPI credit cost: 1 per call.
+
+    Returns 0.0 if no results or on error.
+    """
+    params = {
+        "engine":          "google_hotels",
+        "q":               f"hotels in {city}",
+        "check_in_date":   check_in.strftime("%Y-%m-%d"),
+        "check_out_date":  check_out.strftime("%Y-%m-%d"),
+        "adults":          "1",
+        "currency":        "USD",
+        "hl":              "en",
+        "gl":              "us",
+        "sort_by":         "3",   # 3 = lowest price
+        "api_key":         api_key,
+    }
+    try:
+        data = _get(params)
+    except RuntimeError as e:
+        print(f"    [!] Hotel rate fetch failed for {city}: {e}")
+        return 0.0
+
+    properties = data.get("properties", [])
+    if not properties:
+        return 0.0
+
+    # Collect nightly rates from the first 5 results
+    rates = []
+    for prop in properties[:5]:
+        rpn = prop.get("rate_per_night", {})
+        rate = rpn.get("extracted_lowest") or rpn.get("extracted_highest")
+        if rate:
+            rates.append(float(rate))
+
+    if not rates:
+        return 0.0
+
+    # Median of available rates
+    rates.sort()
+    mid = len(rates) // 2
+    if len(rates) % 2 == 0:
+        return round((rates[mid - 1] + rates[mid]) / 2, 2)
+    return round(rates[mid], 2)
+
+
+def fetch_hotel_rates(
+    cities: list[str],
+    check_in: date,
+    days_per_city: dict[str, int],
+    api_key: str,
+) -> dict[str, tuple[float, float]]:
+    """
+    Fetch nightly hotel rates for all destination cities.
+
+    Returns:
+        dict[city_lower → (nightly_rate, total_stay_cost)]
+    """
+    results: dict[str, tuple[float, float]] = {}
+    print(f"\n  Fetching hotel rates for {len(cities)} city/cities...")
+
+    for city in cities:
+        days = days_per_city.get(city.lower(), 1)
+        check_out = check_in + timedelta(days=days)
+        rate = fetch_hotel_rate(city, check_in, check_out, api_key)
+        total = round(rate * days, 2)
+        results[city.lower()] = (rate, total)
+        if rate:
+            print(f"    {city:20s}  ${rate:.2f}/night × {days} nights = ${total:.2f}")
+        else:
+            print(f"    {city:20s}  no hotel data")
+        time.sleep(0.5)
+
+    return results
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Factory
 # ─────────────────────────────────────────────────────────────────────────────

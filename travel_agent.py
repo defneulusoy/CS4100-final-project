@@ -47,7 +47,7 @@ _load_env()
 # Flight data module (same directory)
 from flights_api import (
     Airport, Flight,
-    build_flight_data, make_api_key,
+    build_flight_data, make_api_key, fetch_hotel_rates,
 )
 
 
@@ -159,6 +159,8 @@ class CityPlan:
     flight: Optional[Flight]
     attractions: list[Attraction] = field(default_factory=list)
     attraction_budget_spent: float = 0.0   # total estimated cost of included attractions
+    hotel_nightly_rate: float = 0.0        # avg nightly hotel rate in USD
+    hotel_total_cost: float = 0.0          # nightly_rate × days
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +248,8 @@ def route_objective(
 
     Lower is better.
     """
-    cities = [start_city] + order
+    # Full route: start → city1 → city2 → ... → cityN → start (return)
+    cities = [start_city] + order + [start_city]
     total_price = 0.0
     total_hours = 0.0
 
@@ -430,11 +433,14 @@ def allocate_days(
     if n == 0:
         return {}
 
-    # Deduct travel days (each flight leg eats time)
+    # Deduct travel days (each flight leg eats time, including the return home)
     transit_days = sum(
         math.ceil(flight_hours.get(c, 0) / 12) * 0.5   # half-day per ~12h flight
         for c in ordered_cities
     )
+    # Add return flight transit time
+    return_hours = flight_hours.get("__return__", 0)
+    transit_days += math.ceil(return_hours / 12) * 0.5
     available = max(n, total_days - transit_days)   # always at least 1 day/city
 
     # Weight each city by total attraction score
@@ -576,7 +582,7 @@ def get_days() -> int:
 SEPARATOR = "─" * 60
 
 
-def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str, CityPlan]):
+def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str, CityPlan], return_flight=None):
     print(f"\n{'═'*60}")
     print("  ✈  OPTIMISED TRAVEL ITINERARY")
     print(f"{'═'*60}")
@@ -601,6 +607,12 @@ def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str,
         else:
             print(f"\n  Stop {idx}: {city}  ({days_label}, no flight data)")
 
+        # Hotel cost
+        if plan.hotel_nightly_rate:
+            print(f"\n  🏨  Hotel:    ~${plan.hotel_nightly_rate:.2f}/night × {plan.days} nights = ${plan.hotel_total_cost:.2f}")
+        else:
+            print(f"\n  🏨  Hotel:    no rate data")
+
         # Attractions
         print(f"\n  🗺  Top Attractions (ranked by importance):\n")
         if plan.attractions:
@@ -616,6 +628,22 @@ def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str,
             print("    No attraction data available.")
 
         print()
+
+    # Return home
+    print(f"  Return: {ordered_cities[-1]} → {start}")
+    print(f"  {SEPARATOR}")
+    if return_flight:
+        stops_str = f"{return_flight.stops} stop{'s' if return_flight.stops != 1 else ''}" if return_flight.stops else "non-stop"
+        print(f"  ✈  Flight:   {return_flight.origin_airport.name} ({return_flight.origin_airport.iata_code})")
+        print(f"              → {return_flight.destination_airport.name} ({return_flight.destination_airport.iata_code})")
+        print(f"      Airline:   {return_flight.airline}  |  {return_flight.flight_number}")
+        print(f"      Departs:   {return_flight.departure_time}")
+        print(f"      Arrives:   {return_flight.arrival_time}")
+        print(f"      Duration:  {return_flight.duration:.1f} hrs  ({stops_str})")
+        print(f"      Price:     ${return_flight.price:.2f}")
+    else:
+        print(f"  No return flight data found.")
+    print()
 
     print(f"{'═'*60}\n")
 
@@ -658,6 +686,9 @@ def main():
         dest_cities, start_city, flight_data, total_days, budget
     )
 
+    from datetime import date as _date, timedelta as _timedelta
+    trip_start_date = _date.today() + _timedelta(days=30)
+
     # --- Layer 2: Fetch & rank attractions ---
     print("⏳ Ranking attractions per city (Layer 2 – Hill Climbing on importance)...\n")
     city_raw_attractions: dict[str, list] = {}
@@ -670,6 +701,10 @@ def main():
         ranked = rank_attractions(raw, budget_per_day, top_n=10)
         city_raw_attractions[city] = ranked
 
+    # Return flight: last city → start city
+    last_city = optimised_order[-1]
+    return_flight = flight_data.get((last_city.lower(), start_city.lower()))
+
     # Allocate days proportionally to attraction richness
     flight_hours = {
         city: flight_data[(optimised_order[i - 1].lower() if i > 0 else start_city.lower(),
@@ -678,10 +713,12 @@ def main():
             city.lower()) in flight_data else 0.0
         for i, city in enumerate(optimised_order)
     }
+    # Pass return flight duration so allocate_days can deduct transit time
+    flight_hours["__return__"] = return_flight.duration if return_flight else 0.0
     day_alloc = allocate_days(optimised_order, city_raw_attractions, total_days, flight_hours)
 
-    # Budget remaining after flights, split evenly across cities for attractions
-    flight_cost_estimate = sum(
+    # Budget remaining after ALL flights (including return)
+    outbound_cost = sum(
         flight_data.get(
             (optimised_order[i - 1].lower() if i > 0 else start_city.lower(), city.lower()),
             None
@@ -691,7 +728,20 @@ def main():
         ) else 0.0
         for i, city in enumerate(optimised_order)
     )
-    attraction_budget = max(0.0, budget - flight_cost_estimate)
+    return_cost = return_flight.price if return_flight else 0.0
+    flight_cost_estimate = outbound_cost + return_cost
+
+    # Fetch real hotel rates for each destination city
+    hotel_rates = fetch_hotel_rates(
+        cities=optimised_order,
+        check_in=trip_start_date,
+        days_per_city={city.lower(): day_alloc[city] for city in optimised_order},
+        api_key=flight_api_key,
+    )
+    hotel_cost_estimate = sum(total for _, total in hotel_rates.values())
+
+    # Remaining budget after flights + hotels, split across cities for attractions
+    attraction_budget = max(0.0, budget - flight_cost_estimate - hotel_cost_estimate)
     per_city_attraction_budget = attraction_budget / max(len(optimised_order), 1)
 
     city_plans: dict[str, CityPlan] = {}
@@ -699,6 +749,7 @@ def main():
     for city in optimised_order:
         key = (prev_city.lower(), city.lower())
         flight = flight_data.get(key)
+        nightly, total_hotel = hotel_rates.get(city.lower(), (0.0, 0.0))
         filtered, spent = filter_by_budget(
             city_raw_attractions[city],
             per_city_attraction_budget,
@@ -710,30 +761,38 @@ def main():
             flight=flight,
             attractions=filtered,
             attraction_budget_spent=spent,
+            hotel_nightly_rate=nightly,
+            hotel_total_cost=total_hotel,
         )
         prev_city = city
 
     # --- Output ---
-    print_itinerary(start_city, optimised_order, city_plans)
+    print_itinerary(start_city, optimised_order, city_plans, return_flight=return_flight)
 
-    total_flight_cost = sum(
-        city_plans[c].flight.price for c in optimised_order if city_plans[c].flight
-    )
-    remaining_budget = budget - total_flight_cost
-
-    total_flight_cost = sum(
-        city_plans[c].flight.price for c in optimised_order if city_plans[c].flight
-    )
-    remaining_budget = budget - total_flight_cost
+    outbound_flight_cost   = sum(city_plans[c].flight.price for c in optimised_order if city_plans[c].flight)
+    return_flight_cost     = return_flight.price if return_flight else 0.0
+    total_flight_cost      = outbound_flight_cost + return_flight_cost
+    total_hotel_cost       = sum(city_plans[c].hotel_total_cost for c in optimised_order)
     total_attraction_spend = sum(city_plans[c].attraction_budget_spent for c in optimised_order)
+    total_spent            = total_flight_cost + total_hotel_cost + total_attraction_spend
+    remaining_budget       = budget - total_spent
+
+    print(f"  💰 Outbound flights:        ${outbound_flight_cost:.2f}")
+    print(f"  💰 Return flight:           ${return_flight_cost:.2f}")
     print(f"  💰 Total flight cost:       ${total_flight_cost:.2f}")
+    print(f"  💰 Hotel stays:             ${total_hotel_cost:.2f}")
     print(f"  💰 Est. attraction spend:   ${total_attraction_spend:.2f}")
-    print(f"  💰 Remaining budget:        ${remaining_budget - total_attraction_spend:.2f}")
+    print(f"  ─────────────────────────────────────────")
+    print(f"  💰 Total estimated spend:   ${total_spent:.2f}")
+    print(f"  💰 Remaining budget:        ${remaining_budget:.2f}")
     print(f"  📅 Day breakdown:")
     for city in optimised_order:
         d = city_plans[city].days
+        h = city_plans[city].hotel_total_cost
         s = city_plans[city].attraction_budget_spent
-        print(f"       {city}: {d} day{'s' if d != 1 else ''}  |  ~${s:.2f} on attractions")
+        print(f"       {city}: {d} day{'s' if d != 1 else ''}  |  hotel ~${h:.2f}  |  attractions ~${s:.2f}")
+    if return_flight:
+        print(f"       Return ({last_city} → {start_city}): {return_flight.duration:.1f}h travel")
     if not use_real_attractions:
         print("\n  ⚠  Attraction data is mocked. Set GOOGLE_PLACES_API_KEY to use real data.")
     print()
