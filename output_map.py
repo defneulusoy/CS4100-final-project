@@ -161,6 +161,11 @@ def build_map_data(
             "price": rf.price,
         }
 
+    # Minimum budget = flights + hotels + all attraction costs (ignoring budget cap)
+    # This is what it costs bare minimum with no leftover
+    min_budget = round(total_flight_cost + total_hotel_cost + total_attraction_spend, 2)
+    over_budget = total_spent > budget
+
     return {
         "cities": cities,
         "returnFlight": return_info,
@@ -173,6 +178,8 @@ def build_map_data(
             "attractions": total_attraction_spend,
             "totalSpent": total_spent,
             "remaining": remaining_budget,
+            "overBudget": over_budget,
+            "minBudget": min_budget,
         },
     }
 
@@ -255,9 +262,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     #sidebar { width: 100%; }
     .budget-grid, .b-totals { grid-template-columns: 1fr; }
   }
+  #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+                   z-index: 1000; align-items: center; justify-content: center; }
+  #modal-overlay.visible { display: flex; }
+  #modal-box { background: #fff; border-radius: 14px; padding: 28px 32px; max-width: 420px;
+               width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.18); text-align: center; }
+  #modal-box .modal-icon { font-size: 36px; margin-bottom: 12px; }
+  #modal-box h2 { font-size: 17px; font-weight: 500; color: #222; margin-bottom: 10px; }
+  #modal-box p { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 6px; }
+  #modal-box .modal-min { font-size: 26px; font-weight: 500; color: #D85A30; margin: 14px 0; }
+  #modal-box .modal-breakdown { font-size: 12px; color: #777; margin-bottom: 18px;
+                                 background: #f9f8f5; border-radius: 8px; padding: 10px 14px;
+                                 text-align: left; }
+  #modal-box .modal-breakdown div { display: flex; justify-content: space-between; padding: 2px 0; }
+  #modal-box .modal-breakdown .mb-val { font-weight: 500; color: #444; }
+  #modal-box button { background: #222; color: #fff; border: none; border-radius: 8px;
+                      padding: 10px 28px; font-size: 13px; cursor: pointer; font-weight: 500; }
+  #modal-box button:hover { background: #444; }
 </style>
 </head>
 <body>
+<div id="modal-overlay" id="modal-overlay">
+  <div id="modal-box">
+    <div class="modal-icon">&#9888;</div>
+    <h2>Over budget</h2>
+    <p>Your selected itinerary exceeds your budget of <strong id="modal-user-budget"></strong>.</p>
+    <div class="modal-min" id="modal-min-value"></div>
+    <p style="font-size:12px;color:#888;margin-bottom:12px;">minimum required budget</p>
+    <div class="modal-breakdown" id="modal-breakdown"></div>
+    <button onclick="document.getElementById('modal-overlay').classList.remove('visible')">View map anyway</button>
+  </div>
+</div>
 <div id="app">
   <h1>Travel Itinerary Map</h1>
   <div id="top">
@@ -474,6 +509,18 @@ function renderOverlay(svg, proj) {
 buildSidebar();
 buildBudget();
 drawMap();
+
+if (DATA.budget.overBudget) {
+  const b = DATA.budget;
+  document.getElementById("modal-user-budget").textContent = fmt(b.total);
+  document.getElementById("modal-min-value").textContent = fmt(b.minBudget);
+  document.getElementById("modal-breakdown").innerHTML = `
+    <div><span>Flights</span><span class="mb-val">${fmt(b.totalFlights)}</span></div>
+    <div><span>Hotels</span><span class="mb-val">${fmt(b.hotels)}</span></div>
+    <div><span>Attractions</span><span class="mb-val">${fmt(b.attractions)}</span></div>
+  `;
+  document.getElementById("modal-overlay").classList.add("visible");
+}
 </script>
 </body>
 </html>

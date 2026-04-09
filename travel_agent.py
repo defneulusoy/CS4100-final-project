@@ -794,6 +794,9 @@ def main():
         print(f"       {city}: {d} day{'s' if d != 1 else ''}  |  hotel ~${h:.2f}  |  attractions ~${s:.2f}")
     if return_flight:
         print(f"       Return ({last_city} → {start_city}): {return_flight.duration:.1f}h travel")
+    if total_spent > budget:
+        print(f"\n  ⚠  OVER BUDGET: trip costs ${total_spent:.2f} but your budget is ${budget:.2f}.")
+        print(f"     Minimum budget required: ${total_spent:.2f}")
     if not use_real_attractions:
         print("\n  ⚠  Attraction data is mocked. Set GOOGLE_PLACES_API_KEY to use real data.")
     print()
