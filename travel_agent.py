@@ -45,6 +45,7 @@ def _load_env() -> None:
 _load_env()
 
 # Flight data module (same directory)
+from output_map import build_map_data, generate_map
 from flights_api import (
     Airport, Flight,
     build_flight_data, make_api_key, fetch_hotel_rates,
@@ -796,6 +797,24 @@ def main():
     if not use_real_attractions:
         print("\n  ⚠  Attraction data is mocked. Set GOOGLE_PLACES_API_KEY to use real data.")
     print()
+
+    # --- Generate HTML map ---
+    print("⏳ Generating map...")
+    map_data = build_map_data(
+        start_city=start_city,
+        optimised_order=optimised_order,
+        city_plans=city_plans,
+        return_flight=return_flight,
+        budget=budget,
+        outbound_flight_cost=outbound_flight_cost,
+        return_flight_cost=return_flight_cost,
+        total_flight_cost=total_flight_cost,
+        total_hotel_cost=total_hotel_cost,
+        total_attraction_spend=total_attraction_spend,
+        total_spent=total_spent,
+        remaining_budget=remaining_budget,
+    )
+    generate_map(map_data)
 
 
 if __name__ == "__main__":
