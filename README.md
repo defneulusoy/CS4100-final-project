@@ -11,7 +11,8 @@ Use this project if you want to optimize a multi-city flight itinerary from the 
 ### Prerequisites
 
 - Python 3.10+ installed
-- Internet access for default OpenFlights download (or local dataset files)
+- Internet access for API calls
+- API keys generated for SerpAPI and Google Places API
 
 ### Quick start
 
@@ -27,15 +28,17 @@ python3 genetic.py --interactive --input routes_clean.csv
 
 When you run interactive mode, answer:
 
-1. `What location(s) would you like to visit?` (IATA codes, comma-separated)
-2. `Where are you starting from?` (single IATA code)
-3. `What is your budget?` (USD, optional)
+1. `Where are you starting from?` (single IATA code or city name)
+2. `What location(s) would you like to visit?` (city names of IATA codes, comma-separated)
+3. `What is your budget?` (USD)
+4. `What is your the duration of your trip?` (days)
 
 Example input:
 
-- Destinations: `BKK,SVO,AUH,SGN`
-- Start: `IST`
-- Budget: `900`
+- Start: `Boston`
+- Destinations: `New York, Rome, Paris, Tokyo`
+- Budget: `9000`
+- Days: `15`
 
 ### How to read results
 
@@ -46,12 +49,10 @@ Example input:
 
 ### Common issues
 
-- `Need at least two cities` or `Provide a start city and at least one destination`
+- `Budget not enough for `
 	- Ensure you provide 1 start city + at least 1 destination.
 - `Cities list must not contain duplicates`
 	- Remove repeated airport codes.
-- Poor itineraries with large penalties
-	- Increase collection size (example: `--max-routes 10000`) and retry.
 
 ## Objective
 

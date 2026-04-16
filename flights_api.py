@@ -245,9 +245,12 @@ def city_to_iata(name: str) -> str:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Single route search
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Searches for the cheapest flight between two cities on the given date.
+Returns a Flight object or None.
+Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling
+with try/except blocks to catch potential errors from the API call and from the city-to-IATA conversion.
+"""
 
 def search_flight(
     origin_city: str,
@@ -255,11 +258,7 @@ def search_flight(
     depart_date: date,
     api_key: str,
 ) -> Optional[Flight]:
-    """
-    Search Google Flights for the cheapest one-way option between two cities.
-    City names are passed directly — SerpAPI resolves them to IATA codes.
-    Returns a Flight object or None if no results found.
-    """
+
     try:
         dep_iata = city_to_iata(origin_city)
         arr_iata = city_to_iata(dest_city)
@@ -289,7 +288,7 @@ def search_flight(
     if not candidates:
         return None
 
-    # Pick cheapest by price
+    # Pick cheapest flight
     flights = []
     for offer in candidates:
         f = _parse_offer(offer, origin_city, dest_city)
@@ -302,9 +301,12 @@ def search_flight(
     return min(flights, key=lambda f: f.price)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# High-level builder  (called by travel_agent.py)
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Builds flight data for all routes in our itinerary by searching for the cheapest flight between each city pair.
+Generative AI usage: The contents of this function were separated from the original code, and refactored with the help of Claude AI
+into a separate function to build the flight data for the routes in our itinerary. The original code also had the hotel rate lookup mixed
+in with building the flight data, which Claude AI helped to separate into two functions.
+"""
 
 def build_flight_data(
     start_city: str,
@@ -312,19 +314,9 @@ def build_flight_data(
     api_key: str,
     trip_start_date: Optional[date] = None,
 ) -> tuple[dict[str, Airport], dict[tuple[str, str], Flight]]:
-    """
-    Fetch the cheapest one-way flight for every ordered city pair that could
-    appear in the itinerary.
 
-    SerpAPI credit cost: 1 per route.
-    Example — 4 cities (1 start + 3 destinations) = 12 routes = 12 credits.
-
-    Returns:
-        airports : dict[city_lower → Airport]   (populated from flight results)
-        flights  : dict[(orig_lower, dest_lower) → Flight]
-    """
     if trip_start_date is None:
-        # Default: 30 days from today so prices are realistic
+        # Searches for flights departing 30 days from now if there is no start date for the trip, which is for all our calculations
         trip_start_date = date.today() + timedelta(days=30)
 
     all_cities = [start_city] + dest_cities
@@ -349,7 +341,7 @@ def build_flight_data(
             key = (orig.lower(), dest.lower())
             flights[key] = flight
 
-            # Populate airports dict from what the response gave us
+            # Populate airports dictionary from what the response gave us
             airports[orig.lower()] = flight.origin_airport
             airports[dest.lower()] = flight.destination_airport
 
@@ -363,15 +355,20 @@ def build_flight_data(
         else:
             print(f"    {label:30s}  no results")
 
-        time.sleep(0.5)   # be polite to the API
+        time.sleep(0.5)
 
     return airports, flights
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Hotel rate lookup  (Google Hotels via SerpAPI)
-# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+Gets the median hotel rate for the given city from SerpAPI and calculates the total cost based on the number of days spent in that city.
+Uses 30 days from now as the check in date for the search.
+Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except 
+blocks to catch potential errors from the API call. The original code also had the flight data lookup mixed in with building the hotel rate data,
+which Claude AI helped to separate into two functions. Claude AI was also used to debug the original code for this function.
+"""
 
 def fetch_hotel_rate(
     city: str,
@@ -379,17 +376,7 @@ def fetch_hotel_rate(
     check_out: date,
     api_key: str,
 ) -> float:
-    """
-    Fetch the median nightly hotel rate for a city using the Google Hotels API.
 
-    Searches for hotels sorted by lowest price, takes the cheapest 5 results,
-    and returns their median rate — giving a representative mid-range cost
-    rather than an outlier cheapest or most expensive option.
-
-    SerpAPI credit cost: 1 per call.
-
-    Returns 0.0 if no results or on error.
-    """
     params = {
         "engine":          "google_hotels",
         "q":               f"hotels in {city}",
@@ -399,7 +386,7 @@ def fetch_hotel_rate(
         "currency":        "USD",
         "hl":              "en",
         "gl":              "us",
-        "sort_by":         "3",   # 3 = lowest price
+        "sort_by":         "3", # 3 is the price sorting option
         "api_key":         api_key,
     }
     try:
@@ -412,7 +399,7 @@ def fetch_hotel_rate(
     if not properties:
         return 0.0
 
-    # Collect nightly rates from the first 5 results
+    # Collects nightly rates from the first 5 results for the hotels in a city
     rates = []
     for prop in properties[:5]:
         rpn = prop.get("rate_per_night", {})
@@ -423,7 +410,7 @@ def fetch_hotel_rate(
     if not rates:
         return 0.0
 
-    # Median of available rates
+    # Gets median of all available hotel rates
     rates.sort()
     mid = len(rates) // 2
     if len(rates) % 2 == 0:
@@ -431,18 +418,21 @@ def fetch_hotel_rate(
     return round(rates[mid], 2)
 
 
+"""
+Gets the hotel rates for all itinerary cities and calculates the total cost of the stay in each city based on the number of days
+spent and the check in date as 30 days from now. 
+Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except
+blocks to catch potential errors from the API call. The original code also had the flight data lookup mixed in with building the hotel rate data
+and getting the rate for each city, which Claude AI helped to separate into three functions. Claude AI was also used to debug the original code 
+for this function.
+"""
 def fetch_hotel_rates(
     cities: list[str],
     check_in: date,
     days_per_city: dict[str, int],
     api_key: str,
 ) -> dict[str, tuple[float, float]]:
-    """
-    Fetch nightly hotel rates for all destination cities.
-
-    Returns:
-        dict[city_lower → (nightly_rate, total_stay_cost)]
-    """
+    
     results: dict[str, tuple[float, float]] = {}
     print(f"\n  Fetching hotel rates for {len(cities)} city/cities...")
 
@@ -460,9 +450,10 @@ def fetch_hotel_rates(
 
     return results
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Factory
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Gets the API key from the environment variable, raises error if key is not found.
+Generative AI usage: This function was refactored with the help of Claude AI to add error handling by raising an EnvironmentError.
+"""
 
 def make_api_key(key: str = "") -> str:
     """Return key from argument or SERPAPI_KEY env var."""
@@ -476,9 +467,11 @@ def make_api_key(key: str = "") -> str:
     return k
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Quick standalone test
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Main function executes flight data fetching for a sample itinerary.
+Generative AI usage: This function was generated by Claude AI to help us test the functionality of the API calls and data parsing
+in this file.
+"""
 
 if __name__ == "__main__":
     key = make_api_key()
