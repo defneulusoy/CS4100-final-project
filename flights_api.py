@@ -19,8 +19,6 @@ What you get back per route (all from one call):
     - Number of stops
     - Price in USD  ← real Google Flights pricing data
 
-Free tier: 100 searches / month, no credit card required.
-Sign up at: https://serpapi.com/users/sign_up
 
 Set before running:
     export SERPAPI_KEY=your_api_key
@@ -29,6 +27,19 @@ Note: SerpAPI takes city names and resolves them to IATA codes itself,
 so no separate airport-lookup call is needed. You can also pass a city
 name as departure_id / arrival_id and it will match the nearest airport.
 """
+
+"""
+GENERATIVE AI USE:
+This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
+The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
+were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
+done with the help of Claude AI. Some of the functions in this file to obtain data from SerpAPI were written with the help of Claude AI,
+as indicated above the functions.
+
+
+
+"""
+
 
 import os
 import json
@@ -41,9 +52,9 @@ from datetime import date, timedelta, datetime
 from typing import Optional
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Data classes
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Data classes to represent the airports and flights from each airport.
+"""
 
 @dataclass
 class Airport:

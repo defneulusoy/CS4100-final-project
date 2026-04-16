@@ -4,6 +4,21 @@ output_map.py  -  Generate a self-contained HTML map for the travel itinerary.
 Called at the end of travel_agent.py. Writes itinerary_map.html next to the
 script, then opens it in the default browser automatically.
 """
+"""
+GENERATIVE AI USE:
+This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
+The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
+were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
+done with the help of Claude AI. The output functions to print the output of our itinerary planning algorithm were obtained using 
+Claude AI, with the following prompt:
+
+
+The html generation code to display the output of our algorithm on the world map was obtained through Claude AI with the
+following prompt:
+
+
+
+"""
 
 import json
 import os
@@ -12,9 +27,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# City coordinates  (lat/lon for the world map projection)
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+City coordinate table to map coordinates to city names for the output map.
+"""
 
 CITY_COORDS: dict[str, tuple[float, float]] = {
     "boston": (42.36, -71.06), "new york": (40.71, -74.01),

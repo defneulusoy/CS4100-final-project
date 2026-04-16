@@ -1,13 +1,29 @@
 """
-AI Travel Recommendation Agent
-Two-layer First-Choice Hill Climbing:
-  Layer 1: Optimize city visit order by flight cost + duration
-  Layer 2: Rank attractions in each city by importance score
+AI Travel Itinerary Recommendation Agent
+First-Choice Hill Climbing with Two Layers of Optimization:
+  Layer 1: Choose city visit order and flights using the flight cost and duration as the objective function.
+  Layer 2: Choose attraction order for each city using the importance score as the objective function.
 
 Environment variables:
     SERPAPI_KEY         – from https://api.flightapi.io/register  (free)
     GOOGLE_PLACES_API_KEY – from https://console.cloud.google.com   (free tier)
                             If absent, mock attraction data is used.
+"""
+
+"""
+GENERATIVE AI USE:
+This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
+The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
+were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
+done with the help of Claude AI. The output functions to print the output of our itinerary planning algorithm were obtained using 
+Claude AI, with the following prompt:
+
+
+The html generation code to display the output of our algorithm on the world amp was obtained through Claude AI with the
+following prompt:
+
+
+
 """
 
 import math
@@ -19,13 +35,10 @@ import urllib.request
 import urllib.parse
 import json
 
-
+"""
+Obtains the API keys from the .env file, allows user to manually set environment variables in the terminal to run without a .env file
+"""
 def _load_env() -> None:
-    """
-    Load KEY=VALUE pairs from a .env file sitting next to this script.
-    Uses __file__ so it works regardless of which directory you run from.
-    Does NOT override variables already set in the shell environment.
-    """
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     try:
         with open(env_path) as f:
@@ -39,12 +52,13 @@ def _load_env() -> None:
                 if key and key not in os.environ:
                     os.environ[key] = value
     except FileNotFoundError:
-        pass  # .env is optional — keys can still be set in the shell
+        pass
 
 
 _load_env()
 
-# Flight data module (same directory)
+
+# Import map and flight API data
 from output_map import build_map_data, generate_map
 from flights_api import (
     Airport, Flight,
@@ -52,24 +66,22 @@ from flights_api import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Data classes  (Flight and Airport are imported from flights_api)
-# ---------------------------------------------------------------------------
-
-# Estimated entry cost in USD per price_level (0=free … 4=very expensive).
-# Used as fallback when the attraction isn't in KNOWN_COSTS below.
+"""
+Data classes for the itinerary planning algorithm
+"""
+# Represents the estimated cost of an attraction based on its price level. 
+# The price level is a rating form 0 to 4 that comes from the Google Places API, where 0 means free and 4 means very expensive.
 PRICE_LEVEL_COST: dict[int, float] = {
-    0: 0.0,    # free  (parks, churches, public squares)
-    1: 15.0,   # cheap (small museums, minor attractions)
-    2: 30.0,   # moderate (major museums, galleries)
-    3: 60.0,   # expensive (theme parks, tours)
-    4: 120.0,  # very expensive (luxury experiences)
+    0: 0.0,    # free  (parks, churches, public squares and landmarks)
+    1: 15.0,   # cheap (small museums and minor attractions)
+    2: 30.0,   # moderate (larger museums and art galleries)
+    3: 60.0,   # expensive (theme parks and attraction tours)
+    4: 120.0,  # very expensive (luxury experiences like Disneyland, high-end shows and restaurants)
 }
 
-# Hardcoded real-world entry prices (USD) for major attractions whose
-# Google Places price_level is unreliable (often reported as 0/free).
-# Keys are lowercase substrings — if the attraction name contains the key,
-# this cost is used instead of the price_level estimate.
+# Represents placeholder prices for major attractions in popular cities.
+# Used when the Google Places API returns a price level of 0 for attractions that are 
+# actually paid, common for some well known landmarks and museums.
 KNOWN_COSTS: dict[str, float] = {
     # Paris
     "louvre":               22.0,
@@ -85,10 +97,10 @@ KNOWN_COSTS: dict[str, float] = {
     "colosseum":            18.0,
     "coliseum":             18.0,
     "vatican museums":      20.0,
-    "sistine chapel":       20.0,  # included with Vatican Museums
+    "sistine chapel":       20.0,
     "castel sant'angelo":   15.0,
     "borghese gallery":     15.0,
-    "roman forum":          18.0,  # combined ticket with Colosseum
+    "roman forum":          18.0,
     "palatine hill":        18.0,
     # Tokyo
     "tokyo skytree":        22.0,
@@ -100,7 +112,7 @@ KNOWN_COSTS: dict[str, float] = {
     "ghibli museum":        16.0,
     "edo-tokyo museum":      7.0,
     "tokyo national museum": 10.0,
-    "imperial palace":       0.0,  # free (east gardens)
+    "imperial palace":       0.0,
     # London
     "tower of london":      34.0,
     "buckingham palace":    32.0,
@@ -128,20 +140,21 @@ KNOWN_COSTS: dict[str, float] = {
     "escape room":          35.0,
 }
 
-
+"""
+Estimates the cost of an attraction based on its price level, obtained from the 
+Google Places API and known costs for popular attractions.
+"""
 def estimate_attraction_cost(attr_name: str, price_level: int) -> float:
-    """
-    Return the best available cost estimate for an attraction.
-    Checks KNOWN_COSTS first (by substring match on lowercase name),
-    then falls back to PRICE_LEVEL_COST.
-    """
+
     name_lower = attr_name.lower()
     for keyword, cost in KNOWN_COSTS.items():
         if keyword in name_lower:
             return cost
     return PRICE_LEVEL_COST.get(price_level, 0.0)
 
-
+"""
+Data classes to represent attractions in each city and all available information about each city
+"""
 @dataclass
 class Attraction:
     name: str
@@ -152,21 +165,23 @@ class Attraction:
     score: float = 0.0     # computed importance score
     est_cost: float = 0.0  # estimated entry cost in USD
 
-
+"""
+Represents all information for a city, including the flights to get there, the attractions, hotel cost and number of days allocated to it
+"""
 @dataclass
 class CityPlan:
     city: str
-    days: int                    # allocated days to spend here
+    days: int
     flight: Optional[Flight]
     attractions: list[Attraction] = field(default_factory=list)
     attraction_budget_spent: float = 0.0   # total estimated cost of included attractions
     hotel_nightly_rate: float = 0.0        # avg nightly hotel rate in USD
     hotel_total_cost: float = 0.0          # nightly_rate × days
 
-
-# ---------------------------------------------------------------------------
-# Attraction importance score
-# ---------------------------------------------------------------------------
+"""
+Represents category weights for attraction categories and price penalties for attractions based on their price levels.
+0 represents a free attraction, while 4 represents a very expensive attraction, used in the calculation of the importance score.
+"""
 
 CATEGORY_WEIGHTS: dict[str, float] = {
     "museum": 1.2,
@@ -187,25 +202,18 @@ PRICE_PENALTY: dict[int, float] = {
     4: 0.75,  # very expensive
 }
 
-
+"""
+Calculates the importance score of an attraction based on its rating, number of reviews, category and price level,
+takes user budget into consideration. Rating, number of reviews, category, and price level are obtained from the Google Places API.
+Returns a float value representing the importance score for a city.
+Generative AI Usage: This function was tweaked with the help of Claude AI to improve the formula for the importance score, 
+and to add the step to steepen the penalty if the budget per day is less than 100 USD.
+"""
 def attraction_importance(attr: Attraction, budget_per_day: float) -> float:
-    """
-    Composite importance score.
-
-    Formula:
-        score = rating * log(reviews + 1) * category_weight * price_penalty
-
-    - log(reviews + 1): dampens raw count — prevents viral spots from dominating
-    - category_weight:  boosts culturally rich venues (museums, parks, landmarks)
-    - price_penalty:    down-ranks expensive spots when budget is tight
-                        (penalty steepens if budget_per_day < $100)
-
-    Returns a float. Higher = more important to visit.
-    """
     if attr.rating == 0 and attr.review_count == 0:
         return 0.0
 
-    # Pick the highest-weight category the attraction belongs to
+    # Max weight category for the attraction
     cat_w = max(
         (CATEGORY_WEIGHTS.get(t, CATEGORY_WEIGHTS["default"]) for t in attr.types),
         default=CATEGORY_WEIGHTS["default"],
@@ -220,19 +228,31 @@ def attraction_importance(attr: Attraction, budget_per_day: float) -> float:
     return round(score, 4)
 
 
-# ---------------------------------------------------------------------------
-# Layer 1 – Hill climbing: city visit order
-# ---------------------------------------------------------------------------
+"""
+Optimization Layer 1 – First Choice Hill Climbing: city order
+"""
 
+"""
+Calculates the flight cost between two cities using the flight data obtained from SerpAPI.
+Returns the flight price if the route exists, or a large penalty value if it doesn't.
+Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and 
+to debug the function to add a reverse lookup for routes that might not be found in the original direction.
+"""
 def flight_cost(origin: str, destination: str, flight_data: dict[tuple, Flight]) -> float:
-    """Return flight price or a large penalty if the route doesn't exist."""
     key = (origin.lower(), destination.lower())
     if key in flight_data:
         return flight_data[key].price
     # Try reverse (won't be used for routing but avoids KeyError in edge cases)
     return 999_999.0
 
-
+"""
+Calculates the objective function score for a given city order, start city, flight data, total days and budget.
+The objective function combines total flight price, a penalty for excessive flight duration relative to trip length, 
+and a penalty for exceeding the budget to minimize a total cost.
+Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and to add a penalty 
+for excessive flight duration relative to the total trip length, which was not present in the original code. It was also used for
+debugging the function to ensure that it correctly calculates the total flight price and applies the penalties correctly.
+"""
 def route_objective(
     order: list[str],
     start_city: str,
@@ -240,16 +260,7 @@ def route_objective(
     total_days: int,
     budget: float,
 ) -> float:
-    """
-    Objective to MINIMISE for Layer 1.
 
-    Cost = total_flight_price
-           + duration_penalty   (over-budget time penalised)
-           + budget_overage * 100
-
-    Lower is better.
-    """
-    # Full route: start → city1 → city2 → ... → cityN → start (return)
     cities = [start_city] + order + [start_city]
     total_price = 0.0
     total_hours = 0.0
@@ -263,18 +274,24 @@ def route_objective(
             total_price += flight.price
             total_hours += flight.duration
 
-    # Penalise if total flight time consumes too much of the trip
+    # Apply heavy penalty if total flight time consumes too much of the trip
     available_hours = total_days * 24
     if total_hours > available_hours * 0.4:
         total_price += (total_hours - available_hours * 0.4) * 50
 
-    # Penalise budget overage
+    # Apply heavy penalty if budget is exceeded
     if total_price > budget:
         total_price += (total_price - budget) * 100
 
     return total_price
 
-
+"""
+Optimizes city visit order using first choice hill climbing using the route objective function to get a score. Randomly swaps
+two cities to find a neighbor, and moves to the neighbor if it has a better score.
+Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and to add the ability to 
+perform sideways moves, which was not present in the original algorithm. It was also used for debugging the function to ensure that it 
+correctly generated neighbours and applied the first-choice logic.
+"""
 def first_choice_hill_climbing_route(
     cities: list[str],
     start_city: str,
@@ -284,13 +301,7 @@ def first_choice_hill_climbing_route(
     max_iterations: int = 2000,
     max_sideways: int = 50,
 ) -> list[str]:
-    """
-    First-Choice Hill Climbing for city ordering.
 
-    Neighbourhood: random swap of two cities in the route.
-    Accepts the first neighbour that strictly improves the objective.
-    Sideways moves allowed to escape flat plateaux.
-    """
     current = cities[:]
     random.shuffle(current)
     current_score = route_objective(current, start_city, flight_data, total_days, budget)
@@ -319,55 +330,79 @@ def first_choice_hill_climbing_route(
     return current
 
 
-# ---------------------------------------------------------------------------
-# Layer 2 – Rank attractions per city
-# ---------------------------------------------------------------------------
+"""
+Optimization Layer 1 – First Choice Hill Climbing: attraction order for each city
+"""
+
+"""
+Ranks and sorts attractions using the importance score formula, returns the top 10 attractions with the highest importance scores using
+first choice hill climbing. Swaps out one attraction for a neighbor with a better score and stops when there are no improving steps left.
+Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic, to debug the function, and to add
+simulated annealing to avoid local maxima, which was not present in the original algorithm. The simulated annealing allows the algorithm 
+to accept worse neighbors with decaying probability.
+"""
 
 def rank_attractions(
     attractions: list[Attraction],
     budget_per_day: float,
     top_n: int = 10,
+    max_iterations: int = 1000,
+    initial_temp: float = 2.0,
+    cooling_rate: float = 0.995,
 ) -> list[Attraction]:
-    """
-    Score and sort attractions using the importance formula.
-    Returns top_n attractions, highest score first.
 
-    This is hill climbing in selection space:
-    - Start with a random subset of min(top_n, len) attractions
-    - Iteratively swap out one attraction for a better-scored unchosen one
-    - Stop when no improving swap exists (local optimum)
-
-    For small lists (≤ top_n) this degenerates to a simple sort — which IS
-    the global optimum, so that's fine.
-    """
     for attr in attractions:
         attr.score = attraction_importance(attr, budget_per_day)
-
+ 
     if len(attractions) <= top_n:
         return sorted(attractions, key=lambda a: a.score, reverse=True)
-
-    # Hill climbing selection
-    chosen = set(range(top_n))
-    unchosen = set(range(top_n, len(attractions)))
-    current_value = sum(attractions[i].score for i in chosen)
-
-    improved = True
-    while improved:
-        improved = False
-        for i in list(chosen):
-            for j in list(unchosen):
-                if attractions[j].score > attractions[i].score:
-                    chosen.remove(i)
-                    unchosen.add(i)
-                    chosen.add(j)
-                    unchosen.remove(j)
-                    current_value += attractions[j].score - attractions[i].score
-                    improved = True
-                    break
-            if improved:
-                break
-
-    result = [attractions[i] for i in chosen]
+ 
+    # Start with random initial selection
+    indices = list(range(len(attractions)))
+    random.shuffle(indices)
+    chosen   = set(indices[:top_n])
+    unchosen = set(indices[top_n:])
+    current_score = sum(attractions[i].score for i in chosen)
+ 
+    # Track the best solution seen
+    best_chosen = set(chosen)
+    best_score  = current_score
+ 
+    temp = initial_temp
+ 
+    for _ in range(max_iterations):
+        if temp < 0.01:
+            break
+ 
+        # Generate random neighbour
+        swap_out = random.choice(list(chosen))
+        swap_in  = random.choice(list(unchosen))
+ 
+        neighbour_score = current_score - attractions[swap_out].score + attractions[swap_in].score
+        delta = neighbour_score - current_score
+ 
+        if delta > 0:
+            accept = True
+        else:
+            # Accept worse neighbour with probability e^(delta / T)
+            accept = random.random() < math.exp(delta / temp)
+ 
+        if accept:
+            chosen.remove(swap_out)
+            unchosen.add(swap_out)
+            chosen.add(swap_in)
+            unchosen.remove(swap_in)
+            current_score = neighbour_score
+ 
+            # Update best if this is the highest score seen so far
+            if current_score > best_score:
+                best_score  = current_score
+                best_chosen = set(chosen)
+ 
+        # Update temperature
+        temp *= cooling_rate
+ 
+    result = [attractions[i] for i in best_chosen]
     return sorted(result, key=lambda a: a.score, reverse=True)
 
 
@@ -375,27 +410,19 @@ def rank_attractions(
 
 
 
-# ---------------------------------------------------------------------------
-# Budget-aware attraction filter
-# ---------------------------------------------------------------------------
+"""
+Filters the ranked attraction list by the available budget for attractions in that city, includes as many attractions as possible
+without exceeding the budget, and returns the included attractions and total spent on attractions. Uses a Greedy approach to include
+attractions in order of their importance score until we run out of budget or reach the top attraction count of ten.
+Generative AI Usage: This function was refactored with Claude AI to simplify the logic and debug.
+"""
 
 def filter_by_budget(
     ranked_attractions: list[Attraction],
     available_budget: float,
     top_n: int = 10,
 ) -> tuple[list[Attraction], float]:
-    """
-    Walk down the pre-ranked attraction list (best-first) and include each
-    attraction if the remaining budget covers its estimated entry cost.
-    Stop when we have top_n attractions or the budget is exhausted.
 
-    Returns:
-        (included_attractions, total_spent)
-
-    This is a greedy knapsack on a pre-sorted list — optimal when items are
-    already ordered by value (importance score) and we just want as many as
-    we can afford.
-    """
     included = []
     spent = 0.0
 
@@ -410,77 +437,102 @@ def filter_by_budget(
 
     return included, round(spent, 2)
 
-# ---------------------------------------------------------------------------
-# Day allocation across cities
-# ---------------------------------------------------------------------------
+"""
+Allocates the total trip days across the cities using hill climbing with simulated annealing to find an allocation that maximises
+total trip value based on the attraction scores and flight hours.
+Generative AI Usage: This function was generated using Claude AI based on the following prompt to replace our original implementation
+based on proportional allocation:
+Write a Python function that distributes a fixed number of trip days across a list of cities using hill climbing with simulated annealing.
+Each city needs to get at least 1 day and the total days has to equal the available days. Accept worse neighbors with decreasing probability 
+to use simulated annealing. Return the best city/days allocation.
+Claude AI was also used to comment this function to explain the logic and steps of the algorithm.
+"""
 
 def allocate_days(
     ordered_cities: list[str],
     city_attractions: dict[str, list[Attraction]],
     total_days: int,
     flight_hours: dict[str, float],
+    max_iterations: int = 2000,
+    initial_temp: float = 1.0,
+    cooling_rate: float = 0.995,
 ) -> dict[str, int]:
-    """
-    Distribute total_days across cities proportionally to each city's
-    cumulative attraction score (sum of top-10 scores).
-
-    Cities with more and better attractions earn more days.
-    Transit time (flight duration rounded up to nearest half-day) is
-    subtracted from the pool first so travel overhead is accounted for.
-
-    Guarantees every city gets at least 1 day.
-    """
     n = len(ordered_cities)
     if n == 0:
         return {}
-
-    # Deduct travel days (each flight leg eats time, including the return home)
-    transit_days = sum(
-        math.ceil(flight_hours.get(c, 0) / 12) * 0.5   # half-day per ~12h flight
-        for c in ordered_cities
-    )
-    # Add return flight transit time
-    return_hours = flight_hours.get("__return__", 0)
-    transit_days += math.ceil(return_hours / 12) * 0.5
-    available = max(n, total_days - transit_days)   # always at least 1 day/city
-
-    # Weight each city by total attraction score
-    weights: dict[str, float] = {}
-    for city in ordered_cities:
-        attractions = city_attractions.get(city, [])
-        weights[city] = sum(a.score for a in attractions) or 1.0   # floor at 1
-
-    total_weight = sum(weights.values())
-
-    # Proportional allocation, floor at 1
-    raw: dict[str, float] = {
-        c: max(1.0, (weights[c] / total_weight) * available)
-        for c in ordered_cities
+ 
+    available = total_days
+ 
+    # Precompute attraction score weights — floor at 1 so every city is valued
+    weights: dict[str, float] = {
+        city: sum(a.score for a in city_attractions.get(city, [])) or 1.0
+        for city in ordered_cities
     }
-
-    # Round down, then distribute leftover days to highest-weighted cities
-    alloc = {c: int(v) for c, v in raw.items()}
-    remainder = total_days - sum(alloc.values())
-
-    # Give extra days to cities with the largest fractional parts
-    fractions = sorted(ordered_cities, key=lambda c: raw[c] - alloc[c], reverse=True)
-    for city in fractions:
-        if remainder <= 0:
+ 
+    def objective(alloc: dict[str, int]) -> float:
+        # sqrt gives diminishing returns while still rewarding more days in
+        # richer cities — log was too flat and converged to equal distribution
+        return sum(weights[c] * math.sqrt(alloc[c]) for c in ordered_cities)
+ 
+    # Initial state: give every city 1 day, then distribute ALL remaining days
+    # by cycling through cities in weight order until remainder is fully used
+    alloc = {c: 1 for c in ordered_cities}
+    remainder = available - n
+    cities_by_weight = sorted(ordered_cities, key=lambda c: weights[c], reverse=True)
+    while remainder > 0:
+        for city in cities_by_weight:
+            if remainder <= 0:
+                break
+            alloc[city] += 1
+            remainder -= 1
+ 
+    current_score = objective(alloc)
+    best_alloc    = dict(alloc)
+    best_score    = current_score
+    temp          = initial_temp
+ 
+    for _ in range(max_iterations):
+        if temp < 0.01:
             break
-        alloc[city] += 1
-        remainder -= 1
+ 
+        # Neighbour: move 1 day from one city to another
+        # Only cities with more than 1 day can give a day away
+        donors = [c for c in ordered_cities if alloc[c] > 1]
+        if not donors:
+            break
+        give = random.choice(donors)
+        take = random.choice([c for c in ordered_cities if c != give])
+ 
+        alloc[give] -= 1
+        alloc[take] += 1
+        neighbour_score = objective(alloc)
+        delta = neighbour_score - current_score
+ 
+        if delta > 0 or random.random() < math.exp(delta / temp):
+            # Accept — improvement always accepted, worse accepted with
+            # probability e^(delta/T) that shrinks as temperature cools
+            current_score = neighbour_score
+            if current_score > best_score:
+                best_score = current_score
+                best_alloc = dict(alloc)
+        else:
+            # Reject — undo the move
+            alloc[give] += 1
+            alloc[take] -= 1
+ 
+        temp *= cooling_rate
+ 
+    return best_alloc
+ 
 
-    return alloc
-
-# ---------------------------------------------------------------------------
-# Google Places API helper
-# ---------------------------------------------------------------------------
+"""
+Fetches attraction data from Google Places API for a given city, returns a list of Attraction objects with the needed information 
+extracted from the API response.
+Generative AI Usage: This function was debugged and revised with the help of Claude AI to replace our original implementation, which
+did not correcly return an Attraction object and did not handle API errors.
+"""
 
 def fetch_attractions_google(city: str, api_key: str) -> list[Attraction]:
-    """
-    Fetch tourist attractions from Google Places Text Search API.
-    Returns up to 20 candidate attractions for hill-climbing selection.
-    """
     query = urllib.parse.quote(f"top tourist attractions in {city}")
     url = (
         f"https://maps.googleapis.com/maps/api/place/textsearch/json"
@@ -507,12 +559,10 @@ def fetch_attractions_google(city: str, api_key: str) -> list[Attraction]:
 
     return attractions
 
-
+"""
+Generates some mock attraction data for a city when the api key is not found to prevent crashes.
+"""
 def mock_attractions(city: str) -> list[Attraction]:
-    """
-    Placeholder used when no Google API key is provided.
-    Generates plausible-looking fake data so the algorithm can be demonstrated.
-    """
     samples = [
         ("Historic Old Town", 4.7, 18500, 0, ["tourist_attraction", "church"]),
         ("National Museum", 4.5, 12000, 1, ["museum"]),
@@ -542,11 +592,10 @@ def mock_attractions(city: str) -> list[Attraction]:
     random.shuffle(result)
     return result
 
-
-# ---------------------------------------------------------------------------
-# CLI helpers
-# ---------------------------------------------------------------------------
-
+"""
+Helper functions to get user input for the starting city, itinerary cities, budget and trip duration.
+Generative AI Usage: Claude AI was used to refactor these functions to simplify the logic.
+"""
 def prompt(msg: str) -> str:
     return input(msg).strip()
 
@@ -575,11 +624,13 @@ def get_days() -> int:
 
 
 
-
-# ---------------------------------------------------------------------------
-# Pretty output
-# ---------------------------------------------------------------------------
-
+"""
+Prints the final itinerary including city order, days per city, flight details, hotel costs and attraction details.
+Generative AI Usage: This function was generated using Claude AI based on the following prompt to create a clear CLI output
+for users:
+    Create a Python function that takes in a starting city, the city order, a plan for each city and a return flight, and prints a clear
+    itinerary to the console including all information on flights, hotels and attractions per city.
+"""
 SEPARATOR = "─" * 60
 
 
@@ -649,16 +700,22 @@ def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str,
     print(f"{'═'*60}\n")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+"""
+The main function gets the user input, runs the itinerary planning algorithm, and prints the final itinerary to the console.
+The function also gets the flight data and calls the map generation functions to create the output map and generate the html file
+to display the results on a world map. 
+Generative AI Usage: This function was refactored with the help of Claude AI to debug the entire flow of the itinerary plannig algorithm,
+and to get suggestions on the structure of the code in this section to make sure we called the functions in the right order. Claude AI was
+also used to simplify the logic. It was also used to make sure that the function correctly integrated all the parts of the itinerary planning 
+algorithm and produces a clear and readable output for the user.
+"""
 
 def main():
     print("\n╔══════════════════════════════════════╗")
     print("║   AI Travel Recommendation Agent    ║")
     print("╚══════════════════════════════════════╝\n")
 
-    # --- User input ---
+    # Get user input
     start_city, dest_cities = get_cities()
     budget = get_budget()
     total_days = get_days()
@@ -667,7 +724,7 @@ def main():
     google_api_key  = os.environ.get("GOOGLE_PLACES_API_KEY", "")
     use_real_attractions = bool(google_api_key)
 
-    # --- Flight data via FlightAPI.io ---
+    # Grab flight data from SerpAPI
     try:
         flight_api_key = make_api_key()
     except EnvironmentError as e:
@@ -681,7 +738,7 @@ def main():
         print("\n  ✗  No flight data returned. Check your API key and city names.")
         return
 
-    # --- Layer 1: Optimise city order ---
+    # Get and determine flights with hill climbing
     print("⏳ Optimising route (Layer 1 – Hill Climbing on flights)...")
     optimised_order = first_choice_hill_climbing_route(
         dest_cities, start_city, flight_data, total_days, budget
@@ -690,7 +747,7 @@ def main():
     from datetime import date as _date, timedelta as _timedelta
     trip_start_date = _date.today() + _timedelta(days=30)
 
-    # --- Layer 2: Fetch & rank attractions ---
+    # Get and determine attractions with hill climbing
     print("⏳ Ranking attractions per city (Layer 2 – Hill Climbing on importance)...\n")
     city_raw_attractions: dict[str, list] = {}
 
@@ -702,11 +759,11 @@ def main():
         ranked = rank_attractions(raw, budget_per_day, top_n=10)
         city_raw_attractions[city] = ranked
 
-    # Return flight: last city → start city
+    # Get return flight
     last_city = optimised_order[-1]
     return_flight = flight_data.get((last_city.lower(), start_city.lower()))
 
-    # Allocate days proportionally to attraction richness
+    # Allocate days using hill climbing
     flight_hours = {
         city: flight_data[(optimised_order[i - 1].lower() if i > 0 else start_city.lower(),
                            city.lower())].duration
@@ -714,11 +771,10 @@ def main():
             city.lower()) in flight_data else 0.0
         for i, city in enumerate(optimised_order)
     }
-    # Pass return flight duration so allocate_days can deduct transit time
     flight_hours["__return__"] = return_flight.duration if return_flight else 0.0
     day_alloc = allocate_days(optimised_order, city_raw_attractions, total_days, flight_hours)
 
-    # Budget remaining after ALL flights (including return)
+    # Calculate budget remaining after all flights 
     outbound_cost = sum(
         flight_data.get(
             (optimised_order[i - 1].lower() if i > 0 else start_city.lower(), city.lower()),
@@ -741,7 +797,7 @@ def main():
     )
     hotel_cost_estimate = sum(total for _, total in hotel_rates.values())
 
-    # Remaining budget after flights + hotels, split across cities for attractions
+    # Calculate remaining budget after flights and hotels, then split across cities for attractions
     attraction_budget = max(0.0, budget - flight_cost_estimate - hotel_cost_estimate)
     per_city_attraction_budget = attraction_budget / max(len(optimised_order), 1)
 
@@ -767,7 +823,7 @@ def main():
         )
         prev_city = city
 
-    # --- Output ---
+    # Print the itinerary
     print_itinerary(start_city, optimised_order, city_plans, return_flight=return_flight)
 
     outbound_flight_cost   = sum(city_plans[c].flight.price for c in optimised_order if city_plans[c].flight)
@@ -801,7 +857,7 @@ def main():
         print("\n  ⚠  Attraction data is mocked. Set GOOGLE_PLACES_API_KEY to use real data.")
     print()
 
-    # --- Generate HTML map ---
+    # Call functions to generate the html map
     print("⏳ Generating map...")
     map_data = build_map_data(
         start_city=start_city,
