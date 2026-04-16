@@ -99,28 +99,31 @@ def _get(params: dict) -> dict:
         raise RuntimeError(f"Network error: {e.reason}") from e
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Parse a single flight offer from Google Flights JSON
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Parses flight data from the SerpAPI response and converts data into the Flight dataclass format.
+Returns a Flight object or None.
+Generative AI usage: This function was written with the help of Claude AI to parse the flight data from the SerpAPI response 
+and convert it into a structured format using the Flight dataclass. The comment below in the function was generated with the help of
+Claude AI and Copilot to explain the structure of the API response.
+"""
 
 def _parse_offer(offer: dict, origin_city: str, dest_city: str) -> Optional[Flight]:
     """
-    Extract a Flight from one entry in best_flights or other_flights.
 
-    Google Flights response structure:
+    API response structure:
     {
-      "flights": [                      ← list of legs (1 = direct, 2+ = connecting)
+      "flights": [
         {
           "departure_airport": { "name": "...", "id": "CDG", "time": "2025-09-01 08:30" },
           "arrival_airport":   { "name": "...", "id": "JFK", "time": "2025-09-01 11:55" },
           "airline": "Air France",
           "flight_number": "AF 334",
-          "duration": 450             ← minutes for this leg
+          "duration": 450
         },
         ...
       ],
-      "total_duration": 450,           ← total minutes incl. layovers
-      "price": 389                     ← USD
+      "total_duration": 450,
+      "price": 389
     }
     """
     legs = offer.get("flights", [])
@@ -176,12 +179,14 @@ def _parse_offer(offer: dict, origin_city: str, dest_city: str) -> Optional[Flig
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# City name → IATA code lookup
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+City name to IATA code mapping for common cities to allow users to put in city names instead of airport codes.
+Generative AI usage: The most common cities and their primary airport codes were obtained through Claude AI with the
+following prompt: 
+Give me a list of the most visited cities in the world and their primary airport IATA codes, formatted as a Python dictionary 
+where the keys are city names and the values are the corresponding IATA codes.
+"""
 
-# Primary airport for the world's most-visited cities.
-# If a user's city isn't here, they can type the IATA code directly instead.
 CITY_TO_IATA: dict[str, str] = {
     # North America
     "boston": "BOS", "new york": "JFK", "new york city": "JFK", "nyc": "JFK",
@@ -221,13 +226,11 @@ CITY_TO_IATA: dict[str, str] = {
 }
 
 
+"""
+Converts a city name to the IATA code for the primary airport in that city. Returs the code if the input is already a code.
+Generative AI usage: This function was reformatted with the help of Claude AI to simplify the structure, add the ValueError.
+"""
 def city_to_iata(name: str) -> str:
-    """
-    Convert a city name to its primary airport IATA code.
-    If the input is already a 3-letter uppercase code, returns it as-is.
-    Raises ValueError if the city isn't in the lookup table.
-    """
-    # Already an IATA code
     if len(name) == 3 and name.isupper():
         return name
 
