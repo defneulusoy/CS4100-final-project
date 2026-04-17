@@ -27,7 +27,10 @@ from typing import Optional
 
 
 """
-Data classes to represent the airports and flights from each airport.
+Data class to represent the airports.
+
+Generative AI usage:
+The comments on the fields of the data class were generated with the help of Copilot autocompletion.
 """
 
 @dataclass
@@ -36,7 +39,12 @@ class Airport:
     name: str           # e.g. "Paris Charles de Gaulle Airport"
     city: str           # e.g. "Paris"
 
+"""
+Data class to represent a flight between two cities, including the origin and destination airports, and airline.
 
+Generative AI usage:
+The comments on the fields of the data class were generated with the help of Copilot autocompletion.
+"""
 @dataclass
 class Flight:
     origin: str                   # city name
@@ -51,16 +59,18 @@ class Flight:
     price: float                  # USD
     stops: int = 0
 
+"""
+SerpAPI endpoint for Google Flights search, get request.
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Low-level HTTP helper
-# ─────────────────────────────────────────────────────────────────────────────
+Generative AI usage:
+The structure of the API request and the error handling for the API call were written with the help Claude AI. Claude AI was also
+used to debug the requests.
+"""
 
 BASE = "https://serpapi.com/search"
 
 
 def _get(params: dict) -> dict:
-    """Fire a GET request to SerpAPI and return parsed JSON."""
     qs = urllib.parse.urlencode(params)
     url = f"{BASE}?{qs}"
     try:
