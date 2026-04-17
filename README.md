@@ -1,149 +1,64 @@
-# CS4100-final-project
+# CS4100 Final Project: Travel Itinerary Optimization
 
-Offline-first CLI workflow for flight itinerary optimization using a genetic algorithm with local search.
+A Python-based travel planner that builds multi-city trip itineraries by optimizing destination order, attractions, and day allocation, complete with an interactive map display.
 
-## User Guide
 
-### Who this is for
+## Set Up
 
-Use this project if you want to optimize a multi-city flight itinerary from the terminal using a genetic algorithm.
-
-### Prerequisites
-
-- Python 3.10+ installed
-- Internet access for API calls
-- API keys generated for SerpAPI and Google Places API
-
-### Quick start
-
-Run these three commands in order:
+1. Clone the repository:
 
 ```bash
-python3 data_collection.py --output routes_raw.csv --max-routes 5000
-python3 data_cleaning.py --input routes_raw.csv --output routes_clean.csv --graph-output route_graph.json --meta-output cleaning_meta.json
-python3 genetic.py --interactive --input routes_clean.csv
+git clone https://github.com/defneulusoy/CS4100-final-project.git
+cd CS4100-final-project
 ```
 
-### Interactive trip planning flow
-
-When you run interactive mode, answer:
-
-1. `Where are you starting from?` (single IATA code or city name)
-2. `What location(s) would you like to visit?` (city names of IATA codes, comma-separated)
-3. `What is your budget?` (USD)
-4. `What is your the duration of your trip?` (days)
-
-Example input:
-
-- Start: `Boston`
-- Destinations: `New York, Rome, Paris, Tokyo`
-- Budget: `9000`
-- Days: `15`
-
-### How to read results
-
-- `Best itinerary`: route order selected by GA
-- `Best total duration (min)`: objective value being minimized
-- `Estimated total cost (USD)`: estimated total spend from route prices or distance heuristic
-- `Budget (USD)`: shown if you entered one
-
-### Common issues
-
-- `Budget not enough for `
-	- Ensure you provide 1 start city + at least 1 destination.
-- `Cities list must not contain duplicates`
-	- Remove repeated airport codes.
-
-## Objective
-
-- Problem scope: multi-city itinerary optimization
-- Primary objective: minimize total estimated travel time
-- Data strategy: offline open datasets by default, optional live API enrichment later
-
-## Data schema
-
-All stages use this route schema:
-
-- `origin_iata`
-- `destination_iata`
-- `distance_km`
-- `est_duration_min`
-- `optional_price`
-- `source`
-
-## 1) Collect raw routes
-
-Uses OpenFlights airports/routes (free/open) and computes estimated duration from great-circle distance.
+2. Make sure Python 3 is installed:
 
 ```bash
-python3 data_collection.py \
-	--output routes_raw.csv \
-	--max-routes 5000
+python3 --version
 ```
 
-Optional local sources:
+3. Set your API keys:
 
 ```bash
-python3 data_collection.py \
-	--airports-source ./data/airports.dat \
-	--routes-source ./data/routes.dat \
-	--output routes_raw.csv
+export SERPAPI_KEY=your_serpapi_key
+export GOOGLE_PLACES_API_KEY=your_google_places_key
 ```
 
-## 2) Clean + build route graph
+- SERPAPI_KEY is required for running
+- If GOOGLE_PLACES_API_KEY is absent, mock data is used.
 
-Validates IATA pairs, removes invalid rows, deduplicates origin/destination edges, and exports graph + stats.
 
+## How To Run
+
+Run the main script from the project directory:
 ```bash
-python3 data_cleaning.py \
-	--input routes_raw.csv \
-	--output routes_clean.csv \
-	--graph-output route_graph.json \
-	--meta-output cleaning_meta.json
+python3 travel_agent.py
 ```
 
-## 3) Optimize itinerary with GA + 2-opt
+The program will prompt you for:
 
-You can run this either interactively (prompt-based) or with flags.
+- Starting city
+- Cities to visit (comma-separated)
+- Total budget (USD)
+- Total trip duration (days)
 
-### Interactive mode (recommended)
 
-```bash
-python3 genetic.py --interactive --input routes_clean.csv
-```
+## Reproducing Results
 
-Prompts:
+To reproduce our results, run the program and enter the following:
 
-- `What location(s) would you like to visit?`
-- `Where are you starting from?`
-- `What is your budget?`
+- Starting city: Boston
+- Cities to visit: Paris, Rome, London
+- Budget: 10000
+- Total trip duration: 14
 
-Budget is optional. If provided, it is used as a soft constraint in fitness (over-budget itineraries are penalized).
+This will generate a full itinerary and an interactive map showing the travel route and budget breakdown, including attractions and duration of time in each destination.
 
-### Flag mode
 
-Provide comma-separated cities; first city is fixed as start.
+## Code Organization
 
-```bash
-python3 genetic.py \
-	--input routes_clean.csv \
-	--cities JFK,LAX,SFO,SEA,ORD \
-	--budget 1200 \
-	--population-size 120 \
-	--generations 250 \
-	--output best_itinerary.json
-```
-
-Useful flags:
-
-- `--no-return` to avoid forcing return to starting city
-- `--no-two-opt` to disable local search refinement
-- `--seed` for deterministic runs
-
-## Output artifacts
-
-- `routes_raw.csv`: collected route candidates
-- `routes_clean.csv`: cleaned route table for optimization
-- `route_graph.json`: adjacency map with duration weights
-- `cleaning_meta.json`: row-count quality report
-- `best_itinerary.json`: best route found and fitness history
+travel_agent.py - main script that runs the itinerary planning workflow
+flights_api.py - handles flight and hotel data retrieval
+output_map.py - generates the interactive HTML map visualization
+itinerary_map.html - output file showing final itinerary on a map generated after running the program (not included initially)
