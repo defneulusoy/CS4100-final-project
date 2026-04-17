@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Travel Itinerary Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #f5f4f0; color: #222; font-size: 14px; }
+  #app { display: flex; flex-direction: column; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 500; color: #222; padding: 8px 0 0; }
+  #top { display: flex; gap: 16px; align-items: flex-start; }
+  #map-wrap { flex: 1; min-width: 0; border: 1px solid #ddd; border-radius: 12px;
+              overflow: hidden; background: #dbeef5; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  #map { display: block; width: 100%; }
+  #sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+  .city-card { background: #fff; border: 1px solid #e0dfd8; border-radius: 12px; padding: 12px 14px; }
+  .city-card h3 { font-size: 13px; font-weight: 500; color: #222; margin-bottom: 8px;
+                  display: flex; align-items: center; gap: 6px; }
+  .stop-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-flex;
+                align-items: center; justify-content: center; font-size: 11px;
+                font-weight: 500; flex-shrink: 0; color: white; }
+  .attr-list { list-style: none; }
+  .attr-list li { font-size: 11px; color: #555; padding: 3px 0; display: flex;
+                  justify-content: space-between; border-bottom: 0.5px solid #eee; }
+  .attr-list li:last-child { border-bottom: none; }
+  .attr-rank { width: 16px; color: #aaa; flex-shrink: 0; font-size: 10px; }
+  .attr-name { flex: 1; padding-right: 6px; }
+  .attr-cost { flex-shrink: 0; color: #888; font-size: 10px; }
+  .city-footer { margin-top: 8px; font-size: 11px; color: #777; display: flex;
+                 justify-content: space-between; padding-top: 6px;
+                 border-top: 0.5px solid #eee; }
+  #budget-box { background: #fff; border: 1px solid #e0dfd8; border-radius: 12px; padding: 16px 18px; }
+  #budget-box h2 { font-size: 14px; font-weight: 500; color: #222; margin-bottom: 12px; }
+  .budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; margin-bottom: 12px; }
+  .b-row { display: flex; justify-content: space-between; font-size: 12px; color: #555;
+           padding: 3px 0; border-bottom: 0.5px solid #f0ede8; }
+  .b-row:last-child { border-bottom: none; }
+  .b-val { font-weight: 500; color: #222; }
+  .b-divider { border: none; border-top: 1px solid #ddd; margin: 8px 0; }
+  .b-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; }
+  .b-total-row { display: flex; justify-content: space-between; font-size: 13px;
+                 font-weight: 500; color: #222; padding: 2px 0; }
+  .b-remaining { color: #1D9E75; }
+  .day-breakdown { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+  .day-breakdown h3 { font-size: 12px; font-weight: 500; color: #666; margin-bottom: 8px; }
+  .day-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px; }
+  .day-row { display: flex; align-items: center; justify-content: space-between;
+             font-size: 11px; color: #555; padding: 3px 6px; background: #f9f8f5;
+             border-radius: 6px; }
+  .day-row-left { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tooltip { position: absolute; background: #fff; border: 1px solid #ddd; border-radius: 8px;
+             padding: 10px 12px; font-size: 11px; color: #222; pointer-events: none;
+             z-index: 100; width: 210px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); display: none; }
+  .tooltip h4 { font-size: 12px; font-weight: 500; margin-bottom: 6px; color: #222; }
+  .t-row { display: flex; justify-content: space-between; color: #666; padding: 2px 0;
+           border-bottom: 0.5px solid #f0f0f0; }
+  .t-row:last-child { border-bottom: none; }
+  .t-row span:last-child { font-weight: 500; color: #222; }
+  .legend { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.9);
+            border-radius: 6px; padding: 6px 8px; font-size: 10px; color: #555; }
+  .legend-item { display: flex; align-items: center; gap: 5px; margin: 2px 0; }
+  .legend-line { width: 18px; height: 2px; background: #888; }
+  .legend-dash { width: 18px; height: 2px; background: repeating-linear-gradient(
+    to right, #888 0, #888 4px, transparent 4px, transparent 7px); }
+  @media (max-width: 900px) {
+    #top { flex-direction: column; }
+    #sidebar { width: 100%; }
+    .budget-grid, .b-totals { grid-template-columns: 1fr; }
+  }
+  #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+                   z-index: 1000; align-items: center; justify-content: center; }
+  #modal-overlay.visible { display: flex; }
+  #modal-box { background: #fff; border-radius: 14px; padding: 28px 32px; max-width: 420px;
+               width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.18); text-align: center; }
+  #modal-box .modal-icon { font-size: 36px; margin-bottom: 12px; }
+  #modal-box h2 { font-size: 17px; font-weight: 500; color: #222; margin-bottom: 10px; }
+  #modal-box p { font-size: 13px; color: #555; line-height: 1.6; margin-bottom: 6px; }
+  #modal-box .modal-min { font-size: 26px; font-weight: 500; color: #D85A30; margin: 14px 0; }
+  #modal-box .modal-breakdown { font-size: 12px; color: #777; margin-bottom: 18px;
+                                 background: #f9f8f5; border-radius: 8px; padding: 10px 14px;
+                                 text-align: left; }
+  #modal-box .modal-breakdown div { display: flex; justify-content: space-between; padding: 2px 0; }
+  #modal-box .modal-breakdown .mb-val { font-weight: 500; color: #444; }
+  #modal-box button { background: #222; color: #fff; border: none; border-radius: 8px;
+                      padding: 10px 28px; font-size: 13px; cursor: pointer; font-weight: 500; }
+  #modal-box button:hover { background: #444; }
+</style>
+</head>
+<body>
+<div id="modal-overlay" id="modal-overlay">
+  <div id="modal-box">
+    <div class="modal-icon">&#9888;</div>
+    <h2>Over budget</h2>
+    <p>Your selected itinerary exceeds your budget of <strong id="modal-user-budget"></strong>.</p>
+    <div class="modal-min" id="modal-min-value"></div>
+    <p style="font-size:12px;color:#888;margin-bottom:12px;">minimum required budget</p>
+    <div class="modal-breakdown" id="modal-breakdown"></div>
+    <button onclick="document.getElementById('modal-overlay').classList.remove('visible')">View map anyway</button>
+  </div>
+</div>
+<div id="app">
+  <h1>Travel Itinerary Map</h1>
+  <div id="top">
+    <div id="map-wrap">
+      <svg id="map" viewBox="0 0 900 460"></svg>
+      <div class="tooltip" id="tooltip"></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-line"></div><span>Outbound leg</span></div>
+        <div class="legend-item"><div class="legend-dash"></div><span>Return home</span></div>
+      </div>
+    </div>
+    <div id="sidebar"><div id="cards"></div></div>
+  </div>
+  <div id="budget-box">
+    <h2>Budget breakdown</h2>
+    <div class="budget-grid">
+      <div id="bc-left"></div>
+      <div id="bc-right"></div>
+    </div>
+    <hr class="b-divider">
+    <div class="b-totals">
+      <div class="b-total-row"><span>Total estimated spend</span><span id="b-total"></span></div>
+      <div class="b-total-row b-remaining"><span>Remaining budget</span><span id="b-remaining"></span></div>
+    </div>
+    <div class="day-breakdown">
+      <h3>Day breakdown</h3>
+      <div class="day-rows" id="day-rows"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = {
+  "cities": [
+    {
+      "name": "Boston",
+      "stop": 0,
+      "lat": 42.36,
+      "lon": -71.06,
+      "isHome": true,
+      "color": "#5F5E5A"
+    },
+    {
+      "name": "London",
+      "stop": 1,
+      "lat": 51.51,
+      "lon": -0.13,
+      "isHome": false,
+      "color": "#D85A30",
+      "days": 4,
+      "flight": {
+        "from": "BOS",
+        "to": "LHR",
+        "fromName": "Boston Logan International Airport",
+        "toName": "Heathrow Airport",
+        "airline": "Delta",
+        "fn": "DL 58",
+        "dep": "2026-05-16 19:00",
+        "arr": "2026-05-17 06:45",
+        "dur": "6.8h",
+        "stops": "non-stop",
+        "price": 374.0
+      },
+      "hotel": {
+        "rate": 20.0,
+        "nights": 4,
+        "total": 80.0
+      },
+      "attractions": [
+        {
+          "name": "Famous Cathedral (London)",
+          "rating": 4.7,
+          "reviews": 30075,
+          "cost": "Free",
+          "score": 55.25
+        },
+        {
+          "name": "Historic Old Town (London)",
+          "rating": 4.6,
+          "reviews": 17915,
+          "cost": "Free",
+          "score": 51.26
+        },
+        {
+          "name": "Waterfront Promenade (London)",
+          "rating": 4.4,
+          "reviews": 16477,
+          "cost": "Free",
+          "score": 49.57
+        },
+        {
+          "name": "Central Park / Gardens (London)",
+          "rating": 4.5,
+          "reviews": 21921,
+          "cost": "Free",
+          "score": 48.97
+        },
+        {
+          "name": "City Viewpoint (London)",
+          "rating": 4.4,
+          "reviews": 13376,
+          "cost": "Free",
+          "score": 47.98
+        }
+      ],
+      "attrSpend": 0.0
+    },
+    {
+      "name": "Paris",
+      "stop": 2,
+      "lat": 48.86,
+      "lon": 2.35,
+      "isHome": false,
+      "color": "#1D9E75",
+      "days": 5,
+      "flight": {
+        "from": "LHR",
+        "to": "CDG",
+        "fromName": "Heathrow Airport",
+        "toName": "Paris Charles de Gaulle Airport",
+        "airline": "British Airways",
+        "fn": "BA 300",
+        "dep": "2026-05-16 07:15",
+        "arr": "2026-05-16 09:30",
+        "dur": "1.2h",
+        "stops": "non-stop",
+        "price": 141.0
+      },
+      "hotel": {
+        "rate": 43.0,
+        "nights": 5,
+        "total": 215.0
+      },
+      "attractions": [
+        {
+          "name": "Famous Cathedral (Paris)",
+          "rating": 4.9,
+          "reviews": 30119,
+          "cost": "Free",
+          "score": 58.42
+        },
+        {
+          "name": "Historic Old Town (Paris)",
+          "rating": 4.7,
+          "reviews": 19240,
+          "cost": "Free",
+          "score": 53.1
+        },
+        {
+          "name": "Central Park / Gardens (Paris)",
+          "rating": 4.6,
+          "reviews": 21164,
+          "cost": "Free",
+          "score": 50.81
+        },
+        {
+          "name": "Waterfront Promenade (Paris)",
+          "rating": 4.3,
+          "reviews": 16853,
+          "cost": "Free",
+          "score": 48.41
+        },
+        {
+          "name": "City Viewpoint (Paris)",
+          "rating": 4.4,
+          "reviews": 13856,
+          "cost": "Free",
+          "score": 47.73
+        }
+      ],
+      "attrSpend": 0.0
+    },
+    {
+      "name": "Rome",
+      "stop": 3,
+      "lat": 41.9,
+      "lon": 12.49,
+      "isHome": false,
+      "color": "#378ADD",
+      "days": 5,
+      "flight": {
+        "from": "CDG",
+        "to": "FCO",
+        "fromName": "Paris Charles de Gaulle Airport",
+        "toName": "Leonardo da Vinci International Airport",
+        "airline": "Vueling",
+        "fn": "VY 8249",
+        "dep": "2026-05-16 15:55",
+        "arr": "2026-05-16 21:15",
+        "dur": "5.3h",
+        "stops": "1 stop",
+        "price": 121.0
+      },
+      "hotel": {
+        "rate": 48.0,
+        "nights": 5,
+        "total": 240.0
+      },
+      "attractions": [
+        {
+          "name": "Famous Cathedral (Rome)",
+          "rating": 4.8,
+          "reviews": 30813,
+          "cost": "Free",
+          "score": 57.45
+        },
+        {
+          "name": "Historic Old Town (Rome)",
+          "rating": 4.7,
+          "reviews": 18860,
+          "cost": "Free",
+          "score": 52.76
+        },
+        {
+          "name": "Central Park / Gardens (Rome)",
+          "rating": 4.7,
+          "reviews": 22674,
+          "cost": "Free",
+          "score": 51.37
+        },
+        {
+          "name": "Waterfront Promenade (Rome)",
+          "rating": 4.5,
+          "reviews": 16487,
+          "cost": "Free",
+          "score": 50.11
+        },
+        {
+          "name": "City Viewpoint (Rome)",
+          "rating": 4.5,
+          "reviews": 14405,
+          "cost": "Free",
+          "score": 49.61
+        }
+      ],
+      "attrSpend": 0.0
+    }
+  ],
+  "returnFlight": {
+    "from": "FCO",
+    "to": "BOS",
+    "airline": "Vueling",
+    "fn": "VY 6107",
+    "dep": "2026-05-16 10:25",
+    "arr": "2026-05-16 21:05",
+    "dur": "16.7h",
+    "stops": "1 stop",
+    "price": 350.0
+  },
+  "budget": {
+    "total": 1000.0,
+    "outbound": 636.0,
+    "returnFlight": 350.0,
+    "totalFlights": 986.0,
+    "hotels": 535.0,
+    "attractions": 0.0,
+    "totalSpent": 1521.0,
+    "remaining": -521.0,
+    "overBudget": true,
+    "minBudget": 1521.0
+  }
+};
+
+function fmt(n) { return "$" + n.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+function buildSidebar() {
+  const container = document.getElementById("cards");
+  DATA.cities.filter(c => !c.isHome).forEach(city => {
+    const card = document.createElement("div");
+    card.className = "city-card";
+    const rows = city.attractions.map((a, i) =>
+      `<li>
+        <span class="attr-rank">${i+1}.</span>
+        <span class="attr-name">${a.name}</span>
+        <span class="attr-cost">${a.cost}</span>
+      </li>`
+    ).join("");
+    card.innerHTML = `
+      <h3>
+        <span class="stop-badge" style="background:${city.color}">${city.stop}</span>
+        ${city.name} &mdash; ${city.days} day${city.days !== 1 ? "s" : ""}
+      </h3>
+      <ul class="attr-list">${rows}</ul>
+      <div class="city-footer">
+        <span>Hotel: ${city.hotel.rate > 0 ? fmt(city.hotel.rate) + "/night" : "no data"}</span>
+        <span>Attractions: ~${fmt(city.attrSpend)}</span>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function buildBudget() {
+  const b = DATA.budget;
+  document.getElementById("bc-left").innerHTML = `
+    <div class="b-row"><span>Outbound flights</span><span class="b-val">${fmt(b.outbound)}</span></div>
+    <div class="b-row"><span>Return flight</span><span class="b-val">${fmt(b.returnFlight)}</span></div>
+    <div class="b-row"><span>Total flights</span><span class="b-val">${fmt(b.totalFlights)}</span></div>`;
+  document.getElementById("bc-right").innerHTML = `
+    <div class="b-row"><span>Hotel stays</span><span class="b-val">${fmt(b.hotels)}</span></div>
+    <div class="b-row"><span>Est. attractions</span><span class="b-val">${fmt(b.attractions)}</span></div>`;
+  document.getElementById("b-total").textContent = fmt(b.totalSpent);
+  document.getElementById("b-remaining").textContent = fmt(b.remaining);
+
+  const dr = document.getElementById("day-rows");
+  DATA.cities.filter(c => !c.isHome).forEach(city => {
+    const row = document.createElement("div");
+    row.className = "day-row";
+    row.innerHTML = `
+      <div class="day-row-left">
+        <div class="dot" style="background:${city.color}"></div>
+        <span style="font-weight:500">${city.name}</span>
+        <span>${city.days} day${city.days !== 1 ? "s" : ""}</span>
+      </div>
+      <div style="display:flex;gap:10px;color:#888">
+        <span>hotel ~${fmt(city.hotel.total)}</span>
+        <span>attr ~${fmt(city.attrSpend)}</span>
+      </div>`;
+    dr.appendChild(row);
+  });
+
+  if (DATA.returnFlight) {
+    const row = document.createElement("div");
+    row.className = "day-row";
+    const last = DATA.cities.filter(c => !c.isHome).slice(-1)[0];
+    const home = DATA.cities.find(c => c.isHome);
+    row.innerHTML = `
+      <div class="day-row-left">
+        <div class="dot" style="background:#888;border:1px dashed #555"></div>
+        <span style="font-weight:500">Return</span>
+        <span>${last.name} &rarr; ${home.name}</span>
+      </div>
+      <div style="color:#888">${DATA.returnFlight.dur} travel</div>`;
+    dr.appendChild(row);
+  }
+}
+
+function drawMap() {
+  const svg = d3.select("#map");
+  const W = 900, H = 460;
+
+  const projection = d3.geoNaturalEarth1().scale(153).translate([W/2, H/2]);
+  const path = d3.geoPath().projection(projection);
+
+  fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+    .then(r => r.json())
+    .then(world => {
+      svg.append("rect").attr("width", W).attr("height", H).attr("fill", "#dbeef5");
+      const countries = topojson.feature(world, world.objects.countries);
+      svg.append("g").selectAll("path").data(countries.features).join("path")
+        .attr("d", path).attr("fill", "#e8e6df").attr("stroke", "#c8c6be").attr("stroke-width", 0.4);
+      renderOverlay(svg, projection);
+    })
+    .catch(() => {
+      svg.append("rect").attr("width", W).attr("height", H).attr("fill", "#dbeef5");
+      renderOverlay(svg, projection);
+    });
+}
+
+function renderOverlay(svg, proj) {
+  const stops = DATA.cities.filter(c => !c.isHome);
+  const home = DATA.cities.find(c => c.isHome);
+  const tooltip = document.getElementById("tooltip");
+  const wrap = document.getElementById("map-wrap");
+
+  function px(city) { return proj([city.lon, city.lat]); }
+
+  const legs = [
+    { from: home, to: stops[0], isReturn: false },
+    ...stops.slice(0, -1).map((c, i) => ({ from: c, to: stops[i+1], isReturn: false })),
+    ...(DATA.returnFlight ? [{ from: stops[stops.length-1], to: home, isReturn: true }] : [])
+  ];
+
+  legs.forEach(leg => {
+    const [ax, ay] = px(leg.from);
+    const [bx, by] = px(leg.to);
+    const mx = (ax + bx) / 2;
+    const my = (ay + by) / 2 - 45;
+    svg.append("path")
+      .attr("d", `M${ax},${ay} Q${mx},${my} ${bx},${by}`)
+      .attr("fill", "none")
+      .attr("stroke", leg.isReturn ? "#888" : leg.to.color)
+      .attr("stroke-width", leg.isReturn ? 1.5 : 2)
+      .attr("stroke-dasharray", leg.isReturn ? "5,4" : "none")
+      .attr("opacity", 0.75);
+  });
+
+  DATA.cities.forEach(city => {
+    const [cx, cy] = proj([city.lon, city.lat]);
+    if (city.isHome) {
+      svg.append("circle").attr("cx", cx).attr("cy", cy).attr("r", 7)
+        .attr("fill", "#5F5E5A").attr("stroke", "#fff").attr("stroke-width", 1.5).attr("opacity", 0.9);
+      svg.append("text").attr("x", cx).attr("y", cy - 12)
+        .attr("text-anchor", "middle").attr("fill", "#333")
+        .attr("font-size", 11).attr("font-weight", "500").text(city.name);
+    } else {
+      const g = svg.append("g").style("cursor", "pointer");
+      g.append("circle").attr("cx", cx).attr("cy", cy).attr("r", 13)
+        .attr("fill", city.color).attr("stroke", "#fff").attr("stroke-width", 2).attr("opacity", 0.9);
+      g.append("text").attr("x", cx).attr("y", cy + 5)
+        .attr("text-anchor", "middle").attr("fill", "white")
+        .attr("font-size", 11).attr("font-weight", "500").text(city.stop);
+      svg.append("text").attr("x", cx).attr("y", cy - 17)
+        .attr("text-anchor", "middle").attr("fill", "#222")
+        .attr("font-size", 11).attr("font-weight", "500").text(city.name);
+
+      g.on("mouseenter", function(event) {
+        const svgEl = document.getElementById("map");
+        const svgRect = svgEl.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+        const scaleX = svgRect.width / 900;
+        const scaleY = svgRect.height / 460;
+        const px2 = cx * scaleX + (svgRect.left - wrapRect.left);
+        const py2 = cy * scaleY + (svgRect.top - wrapRect.top);
+        const f = city.flight;
+        tooltip.innerHTML = `
+          <h4>Stop ${city.stop}: ${city.name}</h4>
+          ${f ? `
+          <div class="t-row"><span>Flight</span><span>${f.fn}</span></div>
+          <div class="t-row"><span>Airline</span><span>${f.airline}</span></div>
+          <div class="t-row"><span>Route</span><span>${f.from} &rarr; ${f.to}</span></div>
+          <div class="t-row"><span>Departs</span><span>${f.dep}</span></div>
+          <div class="t-row"><span>Arrives</span><span>${f.arr}</span></div>
+          <div class="t-row"><span>Duration</span><span>${f.dur} (${f.stops})</span></div>
+          <div class="t-row"><span>Flight price</span><span>${fmt(f.price)}</span></div>
+          ` : ""}
+          <div class="t-row"><span>Hotel/night</span><span>${city.hotel.rate > 0 ? fmt(city.hotel.rate) : "N/A"}</span></div>
+          <div class="t-row"><span>Hotel total</span><span>${fmt(city.hotel.total)} (${city.hotel.nights}n)</span></div>
+          <div class="t-row"><span>Attractions</span><span>~${fmt(city.attrSpend)}</span></div>`;
+        const tw = 210, th = 230;
+        let left = px2 + 16, top = py2 - 30;
+        if (left + tw > wrapRect.width - 8) left = px2 - tw - 16;
+        if (top + th > wrapRect.height - 8) top = wrapRect.height - th - 8;
+        if (top < 8) top = 8;
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+        tooltip.style.display = "block";
+      });
+      g.on("mouseleave", () => { tooltip.style.display = "none"; });
+    }
+  });
+}
+
+buildSidebar();
+buildBudget();
+drawMap();
+
+if (DATA.budget.overBudget) {
+  const b = DATA.budget;
+  document.getElementById("modal-user-budget").textContent = fmt(b.total);
+  document.getElementById("modal-min-value").textContent = fmt(b.minBudget);
+  document.getElementById("modal-breakdown").innerHTML = `
+    <div><span>Flights</span><span class="mb-val">${fmt(b.totalFlights)}</span></div>
+    <div><span>Hotels</span><span class="mb-val">${fmt(b.hotels)}</span></div>
+    <div><span>Attractions</span><span class="mb-val">${fmt(b.attractions)}</span></div>
+  `;
+  document.getElementById("modal-overlay").classList.add("visible");
+}
+</script>
+</body>
+</html>
