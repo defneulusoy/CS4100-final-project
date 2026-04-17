@@ -58,7 +58,6 @@ This will generate a full itinerary and an interactive map showing the travel ro
 
 ## Code Organization
 
-travel_agent.py - main script that runs the itinerary planning workflow
-flights_api.py - handles flight and hotel data retrieval
-output_map.py - generates the interactive HTML map visualization
-itinerary_map.html - output file showing final itinerary on a map generated after running the program (not included initially)
+- travel_agent.py - main script that runs the itinerary planning workflow
+- flights_api.py - handles flight and hotel data retrieval
+- output_map.py - generates the interactive HTML map visualization
