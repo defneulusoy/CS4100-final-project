@@ -1,11 +1,21 @@
 """
 Budget Travel Itinerary Planning Agent
+
+This file contains the main logic for the itinerary planning agent, which takes user input for a starting city, a list of cities to 
+visit, a total budget and trip duration, and produces an optimized travel itinerary that includes the order of cities to visit, 
+the flights to take, the attractions to see in each city, and the days to spend in each city. The itinerary is optimized using a
+two-layer first-choice hill climbing algorithm that first optimizes the city order based on flight costs and durations, and then 
+optimizes the attraction selection and day allocation for each city based on an importance score that takes into account attraction 
+ratings, reviews, categories and costs. The file also includes functions to fetch attraction data from the Google Places API, 
+estimate attraction costs, and print the final itinerary in a clear format.
+
 First-Choice Hill Climbing with Two Layers of Optimization:
-  Layer 1: Choose city visit order and flights using the flight cost and duration as the objective function.
+  Layer 1: Choose city visit order and flights using the flight cost and duration as the objective function and sideway moves to 
+           escape local optima.
   Layer 2: Choose attraction order for each city using the importance score as the objective function, allocate days/city
            using hill climbing with simulated annealing
 
-Environment variables:
+Environment variables, in a .env file or set manually in the terminal:
     SERPAPI_KEY         – from https://api.flightapi.io/register
     GOOGLE_PLACES_API_KEY – from https://console.cloud.google.com
 """

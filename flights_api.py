@@ -1,4 +1,9 @@
 """
+This file contains the functions to fetch flight data from SerpAPI and parse it into our data classes. The file also contains
+data classes to represent the airports and flights from each airport, as well as a mapping of city names to IATA codes for the
+most common cities and functions to fetch hotel rates for the cities in the inputted itinerary.The main function at the bottom 
+is for testing the functionality of the API calls and data parsing in this file.
+
 GENERATIVE AI USE:
 
 This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
