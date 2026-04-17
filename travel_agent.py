@@ -1,28 +1,30 @@
 """
-AI Travel Itinerary Recommendation Agent
+Budget Travel Itinerary Planning Agent
 First-Choice Hill Climbing with Two Layers of Optimization:
   Layer 1: Choose city visit order and flights using the flight cost and duration as the objective function.
-  Layer 2: Choose attraction order for each city using the importance score as the objective function.
+  Layer 2: Choose attraction order for each city using the importance score as the objective function, allocate days/city
+           using hill climbing with simulated annealing
 
 Environment variables:
-    SERPAPI_KEY         – from https://api.flightapi.io/register  (free)
-    GOOGLE_PLACES_API_KEY – from https://console.cloud.google.com   (free tier)
-                            If absent, mock attraction data is used.
+    SERPAPI_KEY         – from https://api.flightapi.io/register
+    GOOGLE_PLACES_API_KEY – from https://console.cloud.google.com
 """
 
 """
 GENERATIVE AI USE:
+
 This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
 The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
 were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
 done with the help of Claude AI. The output functions to print the output of our itinerary planning algorithm were obtained using 
 Claude AI, with the following prompt:
 
-
 The html generation code to display the output of our algorithm on the world amp was obtained through Claude AI with the
 following prompt:
-
-
+Make an html page to display the outputs of our algorithm on the world map. The page should include a map with pins for each city on the 
+map, with a hover choice to display the flight and hotel rate information for each city. The page should include a side bar to display the 
+attraction information for each city, as well as the attractoin costs and days allocated to each city. The page should also include a 
+section for a budget breakdown and a summary of the flights to take.
 
 """
 
@@ -711,9 +713,9 @@ algorithm and produces a clear and readable output for the user.
 """
 
 def main():
-    print("\n╔══════════════════════════════════════╗")
-    print("║   AI Travel Recommendation Agent    ║")
-    print("╚══════════════════════════════════════╝\n")
+    print("\n╔════════════════════════════════════════════╗")
+    print("║   Budget Travel Itinerary Planning Agent   ║")
+    print("╚════════════════════════════════════════════╝\n")
 
     # Get user input
     start_city, dest_cities = get_cities()

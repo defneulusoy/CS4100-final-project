@@ -1,45 +1,14 @@
 """
-flights_api.py  –  Flight data via SerpAPI Google Flights
-==========================================================
-Uses a single SerpAPI endpoint per route:
-    GET https://serpapi.com/search?engine=google_flights
-        &departure_id=<IATA>
-        &arrival_id=<IATA>
-        &outbound_date=<YYYY-MM-DD>
-        &type=2          (one-way)
-        &currency=USD
-        &api_key=<key>
-
-What you get back per route (all from one call):
-    - Departure airport name + IATA code
-    - Arrival airport name + IATA code
-    - Airline name + flight number
-    - Departure time + arrival time
-    - Duration in minutes → converted to hours
-    - Number of stops
-    - Price in USD  ← real Google Flights pricing data
-
-
-Set before running:
-    export SERPAPI_KEY=your_api_key
-
-Note: SerpAPI takes city names and resolves them to IATA codes itself,
-so no separate airport-lookup call is needed. You can also pass a city
-name as departure_id / arrival_id and it will match the nearest airport.
-"""
-
-"""
 GENERATIVE AI USE:
+
 This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
-The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
-were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
+The planning of the project functionality and key functions necessary to be implemented, as well as most of the original functions 
+were coded without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
 done with the help of Claude AI. Some of the functions in this file to obtain data from SerpAPI were written with the help of Claude AI,
-as indicated above the functions.
-
-
+as indicated above the functions. Copilot was used throughout this file to assist with the autocompletion of individual lines and 
+comments on the code.
 
 """
-
 
 import os
 import json
@@ -102,7 +71,9 @@ def _get(params: dict) -> dict:
 """
 Parses flight data from the SerpAPI response and converts data into the Flight dataclass format.
 Returns a Flight object or None.
-Generative AI usage: This function was written with the help of Claude AI to parse the flight data from the SerpAPI response 
+
+Generative AI usage: 
+This function was written with the help of Claude AI to parse the flight data from the SerpAPI response 
 and convert it into a structured format using the Flight dataclass. The comment below in the function was generated with the help of
 Claude AI and Copilot to explain the structure of the API response.
 """
@@ -181,8 +152,9 @@ def _parse_offer(offer: dict, origin_city: str, dest_city: str) -> Optional[Flig
 
 """
 City name to IATA code mapping for common cities to allow users to put in city names instead of airport codes.
-Generative AI usage: The most common cities and their primary airport codes were obtained through Claude AI with the
-following prompt: 
+
+Generative AI usage: 
+The most common cities and their primary airport codes were obtained through Claude AI with the following prompt: 
 Give me a list of the most visited cities in the world and their primary airport IATA codes, formatted as a Python dictionary 
 where the keys are city names and the values are the corresponding IATA codes.
 """
@@ -248,7 +220,9 @@ def city_to_iata(name: str) -> str:
 """
 Searches for the cheapest flight between two cities on the given date.
 Returns a Flight object or None.
-Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling
+
+Generative AI usage: 
+This function was refactored with the help of Claude AI to simplify the structure and add error handling
 with try/except blocks to catch potential errors from the API call and from the city-to-IATA conversion.
 """
 
@@ -303,7 +277,9 @@ def search_flight(
 
 """
 Builds flight data for all routes in our itinerary by searching for the cheapest flight between each city pair.
-Generative AI usage: The contents of this function were separated from the original code, and refactored with the help of Claude AI
+
+Generative AI usage: 
+The contents of this function were separated from the original code, and refactored with the help of Claude AI
 into a separate function to build the flight data for the routes in our itinerary. The original code also had the hotel rate lookup mixed
 in with building the flight data, which Claude AI helped to separate into two functions.
 """
@@ -365,7 +341,9 @@ def build_flight_data(
 """
 Gets the median hotel rate for the given city from SerpAPI and calculates the total cost based on the number of days spent in that city.
 Uses 30 days from now as the check in date for the search.
-Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except 
+
+Generative AI usage: 
+This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except 
 blocks to catch potential errors from the API call. The original code also had the flight data lookup mixed in with building the hotel rate data,
 which Claude AI helped to separate into two functions. Claude AI was also used to debug the original code for this function.
 """
@@ -421,7 +399,9 @@ def fetch_hotel_rate(
 """
 Gets the hotel rates for all itinerary cities and calculates the total cost of the stay in each city based on the number of days
 spent and the check in date as 30 days from now. 
-Generative AI usage: This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except
+
+Generative AI usage: 
+This function was refactored with the help of Claude AI to simplify the structure and add error handling with try/except
 blocks to catch potential errors from the API call. The original code also had the flight data lookup mixed in with building the hotel rate data
 and getting the rate for each city, which Claude AI helped to separate into three functions. Claude AI was also used to debug the original code 
 for this function.
@@ -452,7 +432,9 @@ def fetch_hotel_rates(
 
 """
 Gets the API key from the environment variable, raises error if key is not found.
-Generative AI usage: This function was refactored with the help of Claude AI to add error handling by raising an EnvironmentError.
+
+Generative AI usage: 
+This function was refactored with the help of Claude AI to add error handling by raising an EnvironmentError.
 """
 
 def make_api_key(key: str = "") -> str:
@@ -469,7 +451,9 @@ def make_api_key(key: str = "") -> str:
 
 """
 Main function executes flight data fetching for a sample itinerary.
-Generative AI usage: This function was generated by Claude AI to help us test the functionality of the API calls and data parsing
+
+Generative AI usage: 
+This function was generated by Claude AI to help us test the functionality of the API calls and data parsing
 in this file.
 """
 

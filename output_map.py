@@ -1,21 +1,19 @@
 """
-output_map.py  -  Generate a self-contained HTML map for the travel itinerary.
+This file generates an html page that automatically opens a page on the default web browser of the user to display the output
+of our algorithm in a readable wayfor the user on a world map. Features a map with pins for each city, flight information and hotel
+rates displayed on hover, a sidebar with attraction information, costs and days allocated for each city, and a budget breakdown at the
+bottom of the page as well as a flight breakdown for the trip.
 
-Called at the end of travel_agent.py. Writes itinerary_map.html next to the
-script, then opens it in the default browser automatically.
-"""
-"""
 GENERATIVE AI USE:
-This file was reformatted with Claude AI to remove redundant code and to simplify the structure of our functions.
-The planning of the project functionality and key functions necessary to be implemented, as well as the original functions 
-were done without the use of generative AI, but the refactoring of the code for readability and debugging of the original code was 
-done with the help of Claude AI. The output functions to print the output of our itinerary planning algorithm were obtained using 
-Claude AI, with the following prompt:
-
 
 The html generation code to display the output of our algorithm on the world map was obtained through Claude AI with the
 following prompt:
+Make an html page to display the outputs of our algorithm on the world map. The page should include a map with pins for each city on the 
+map, with a hover choice to display the flight and hotel rate information for each city. The page should include a side bar to display the 
+attraction information for each city, as well as the attractoin costs and days allocated to each city. The page should also include a 
+section for a budget breakdown and a summary of the flights to take.
 
+Copilot was used for the autocompletion of comments.
 
 
 """
@@ -80,10 +78,10 @@ STOP_COLORS = ["#888780", "#D85A30", "#1D9E75", "#378ADD",
 def get_coords(city: str) -> tuple[float, float]:
     return CITY_COORDS.get(city.lower(), (0.0, 0.0))
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Build the itinerary data dict from travel_agent objects
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Build the data structure for the map based on the output of our algorithm. This will be passed to the html template to render 
+the map and all the information on it.
+"""
 
 def build_map_data(
     start_city: str,
@@ -176,7 +174,7 @@ def build_map_data(
             "price": rf.price,
         }
 
-    # Minimum budget = flights + hotels + all attraction costs (ignoring budget cap)
+    # Minimum budget = flights, hotels, and all attraction costs (ignoring budget cap)
     # This is what it costs bare minimum with no leftover
     min_budget = round(total_flight_cost + total_hotel_cost + total_attraction_spend, 2)
     over_budget = total_spent > budget
@@ -199,9 +197,9 @@ def build_map_data(
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HTML template
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+The html template for the output map.
+"""
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
@@ -542,15 +540,12 @@ if (DATA.budget.overBudget) {
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public entry point
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+Generates the map html file based on the given data and opens it in a web browser.
+Returns the path to the written file.
+"""
 
 def generate_map(data: dict, output_path: str = None) -> str:
-    """
-    Write the itinerary HTML file and open it in the default browser.
-    Returns the path to the written file.
-    """
     if output_path is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         output_path = os.path.join(script_dir, "itinerary_map.html")
