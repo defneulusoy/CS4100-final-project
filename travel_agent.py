@@ -218,7 +218,9 @@ PRICE_PENALTY: dict[int, float] = {
 Calculates the importance score of an attraction based on its rating, number of reviews, category and price level,
 takes user budget into consideration. Rating, number of reviews, category, and price level are obtained from the Google Places API.
 Returns a float value representing the importance score for a city.
-Generative AI Usage: This function was tweaked with the help of Claude AI to improve the formula for the importance score, 
+
+Generative AI Usage: 
+This function was tweaked with the help of Claude AI to improve the formula for the importance score, 
 and to add the step to steepen the penalty if the budget per day is less than 100 USD.
 """
 def attraction_importance(attr: Attraction, budget_per_day: float) -> float:
@@ -247,7 +249,9 @@ Optimization Layer 1 – First Choice Hill Climbing: city order
 """
 Calculates the flight cost between two cities using the flight data obtained from SerpAPI.
 Returns the flight price if the route exists, or a large penalty value if it doesn't.
-Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and 
+
+Generative AI Usage: 
+This function was refactored with the help of Claude AI to simplify the logic and 
 to debug the function to add a reverse lookup for routes that might not be found in the original direction.
 """
 def flight_cost(origin: str, destination: str, flight_data: dict[tuple, Flight]) -> float:
@@ -261,7 +265,9 @@ def flight_cost(origin: str, destination: str, flight_data: dict[tuple, Flight])
 Calculates the objective function score for a given city order, start city, flight data, total days and budget.
 The objective function combines total flight price, a penalty for excessive flight duration relative to trip length, 
 and a penalty for exceeding the budget to minimize a total cost.
-Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and to add a penalty 
+
+Generative AI Usage: 
+This function was refactored with the help of Claude AI to simplify the logic and to add a penalty 
 for excessive flight duration relative to the total trip length, which was not present in the original code. It was also used for
 debugging the function to ensure that it correctly calculates the total flight price and applies the penalties correctly.
 """
@@ -300,7 +306,9 @@ def route_objective(
 """
 Optimizes city visit order using first choice hill climbing using the route objective function to get a score. Randomly swaps
 two cities to find a neighbor, and moves to the neighbor if it has a better score.
-Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic and to add the ability to 
+
+Generative AI Usage: 
+This function was refactored with the help of Claude AI to simplify the logic and to add the ability to 
 perform sideways moves, which was not present in the original algorithm. It was also used for debugging the function to ensure that it 
 correctly generated neighbours and applied the first-choice logic.
 """
@@ -349,7 +357,9 @@ Optimization Layer 1 – First Choice Hill Climbing: attraction order for each c
 """
 Ranks and sorts attractions using the importance score formula, returns the top 10 attractions with the highest importance scores using
 first choice hill climbing. Swaps out one attraction for a neighbor with a better score and stops when there are no improving steps left.
-Generative AI Usage: This function was refactored with the help of Claude AI to simplify the logic, to debug the function, and to add
+
+Generative AI Usage: 
+This function was refactored with the help of Claude AI to simplify the logic, to debug the function, and to add
 simulated annealing to avoid local maxima, which was not present in the original algorithm. The simulated annealing allows the algorithm 
 to accept worse neighbors with decaying probability.
 """
@@ -426,7 +436,9 @@ def rank_attractions(
 Filters the ranked attraction list by the available budget for attractions in that city, includes as many attractions as possible
 without exceeding the budget, and returns the included attractions and total spent on attractions. Uses a Greedy approach to include
 attractions in order of their importance score until we run out of budget or reach the top attraction count of ten.
-Generative AI Usage: This function was refactored with Claude AI to simplify the logic and debug.
+
+Generative AI Usage: 
+This function was refactored with Claude AI to simplify the logic and debug.
 """
 
 def filter_by_budget(
@@ -452,8 +464,11 @@ def filter_by_budget(
 """
 Allocates the total trip days across the cities using hill climbing with simulated annealing to find an allocation that maximises
 total trip value based on the attraction scores and flight hours.
-Generative AI Usage: This function was generated using Claude AI based on the following prompt to replace our original implementation
+
+Generative AI Usage: 
+This function was generated using Claude AI based on the following prompt to replace our original implementation
 based on proportional allocation:
+
 Write a Python function that distributes a fixed number of trip days across a list of cities using hill climbing with simulated annealing.
 Each city needs to get at least 1 day and the total days has to equal the available days. Accept worse neighbors with decreasing probability 
 to use simulated annealing. Return the best city/days allocation.
@@ -540,7 +555,9 @@ def allocate_days(
 """
 Fetches attraction data from Google Places API for a given city, returns a list of Attraction objects with the needed information 
 extracted from the API response.
-Generative AI Usage: This function was debugged and revised with the help of Claude AI to replace our original implementation, which
+
+Generative AI Usage: 
+This function was debugged and revised with the help of Claude AI to replace our original implementation, which
 did not correcly return an Attraction object and did not handle API errors.
 """
 
@@ -606,7 +623,9 @@ def mock_attractions(city: str) -> list[Attraction]:
 
 """
 Helper functions to get user input for the starting city, itinerary cities, budget and trip duration.
-Generative AI Usage: Claude AI was used to refactor these functions to simplify the logic.
+
+Generative AI Usage: 
+Claude AI was used to refactor these functions to simplify the logic.
 """
 def prompt(msg: str) -> str:
     return input(msg).strip()
@@ -638,10 +657,11 @@ def get_days() -> int:
 
 """
 Prints the final itinerary including city order, days per city, flight details, hotel costs and attraction details.
-Generative AI Usage: This function was generated using Claude AI based on the following prompt to create a clear CLI output
-for users:
-    Create a Python function that takes in a starting city, the city order, a plan for each city and a return flight, and prints a clear
-    itinerary to the console including all information on flights, hotels and attractions per city.
+
+Generative AI Usage: 
+This function was generated using Claude AI based on the following prompt to create a clear CLI output for users:
+Create a Python function that takes in a starting city, the city order, a plan for each city and a return flight, and prints a clear
+itinerary to the console including all information on flights, hotels and attractions per city.
 """
 SEPARATOR = "─" * 60
 
@@ -716,7 +736,9 @@ def print_itinerary(start: str, ordered_cities: list[str], city_plans: dict[str,
 The main function gets the user input, runs the itinerary planning algorithm, and prints the final itinerary to the console.
 The function also gets the flight data and calls the map generation functions to create the output map and generate the html file
 to display the results on a world map. 
-Generative AI Usage: This function was refactored with the help of Claude AI to debug the entire flow of the itinerary plannig algorithm,
+
+Generative AI Usage: 
+This function was refactored with the help of Claude AI to debug the entire flow of the itinerary plannig algorithm,
 and to get suggestions on the structure of the code in this section to make sure we called the functions in the right order. Claude AI was
 also used to simplify the logic. It was also used to make sure that the function correctly integrated all the parts of the itinerary planning 
 algorithm and produces a clear and readable output for the user.
